@@ -27,6 +27,23 @@ CIF ファイルの結晶構造で、あるサイトのイオンを別のイオ�
    - 重い特徴量計算（BVSE グリッドなど）は「特徴量」タブか比較モードを開いたときだけ実行します。
 8. **表示言語とテーマ**: 右上で日本語 / English、システム / ライト / ダークを切り替えられます。選択はブラウザに保存され、言語の初期値はブラウザの言語設定に従います。CSV の見出しと値は言語設定によらず英語で出力します。
 
+## コマンドライン（特徴量の一括計算）
+
+アプリと同じ計算コードで、多数の CIF の特徴量をまとめて計算できます。`dist/csm-features.mjs` は依存パッケージなしで Node.js（20.19 以上）だけで動く 1 ファイルです。
+
+```bash
+node dist/csm-features.mjs cifs/*.cif -o features.csv   # features.csv と features.hops.csv
+node dist/csm-features.mjs cifs/ -r --no-grid -o quick.tsv   # ディレクトリを再帰的に、グリッド計算なしで高速に
+node dist/csm-features.mjs LiCoO2.cif -f json               # JSON（ホップも各構造に含む）
+node dist/csm-features.mjs --list-features                  # 特徴量のキー・単位・説明
+pnpm features cifs/*.cif -o features.csv                   # pnpm から（同じ処理）
+```
+
+- 1 データブロック = 1 行。列は `file, block, formula, ox_guessed` と各特徴量のキー（`--list-features` で一覧）。見出しと値は英語で出力し、数値は有効数字 8 桁です。
+- **可動イオン間ホップ**: 可動イオンを含む構造では、ホップごとの距離 `d` とボトルネック半径 `rb`、始点・終点・ボトルネックの分率座標を自動で出力します。CSV/TSV では `<出力名>.hops.csv` に、JSON では各構造の `hops` に入ります。可動イオンはアプリと同じ規則で選びます（Li → Na → K → Ag → Cu → Mg → Zn → Ca → Rb → Cs → H の陽イオン、それがなければ F・O の陰イオン）。`--mobile Na` で指定、`--mobile none` で無効、`--no-hops` でホップの出力だけを止められます。
+- 計算条件: `--ox "Co=3,O1=-2"`（元素またはサイトラベルごとの酸化数）、`--hop-cutoff 4`、`--grid 0.2`（BVSE / 空隙グリッドの間隔, Å）、`--no-grid`（E_*, R_*, maxVoid, siteE_* を省略）。
+- 複数ファイルは CPU 数まで並列に計算します（`-j` で変更）。読めないファイルがあっても残りを計算し、エラーを標準エラーに出して終了コード 1 で終わります。
+
 ## 判定の考え方
 
 | 指標 | 内容 |
@@ -63,9 +80,9 @@ CIF ファイルの結晶構造で、あるサイトのイオンを別のイオ�
 # pnpm を用意（どれか 1 つ）: corepack enable（Node.js 24 以下に同梱）/ brew install pnpm
 pnpm install
 pnpm dev                 # 開発サーバー
-pnpm build               # dist/index.html（1 ファイル）を生成
+pnpm build               # dist/index.html（アプリ）と dist/csm-features.mjs（CLI）を生成
 pnpm typecheck
-pnpm test                # 目盛りと LiCoO2 特徴量表示（日本語・英語）の回帰テスト
+pnpm test                # 目盛り・LiCoO2 特徴量表示（日本語・英語）・CLI のテスト
 ```
 
 UI の文字列は `src/i18n/ja.ts`（基準）と `src/i18n/en.ts` にあります。`en.ts` が `ja.ts` と同じキーを持つことは型検査（`pnpm typecheck`）で確認されます。

@@ -1,35 +1,19 @@
 import { useMemo, useState } from "react";
 import type { Doc } from "../lib/doc";
 import type { FeatureEntry } from "../lib/useFeatures";
-import { FEATURE_DEFS, FEATURE_BY_KEY, FeatureDef, FeatureValue, GROUPS } from "../lib/features";
+import { FEATURE_DEFS, FEATURE_BY_KEY, GROUPS } from "../lib/features";
 import { bvseSupported } from "../lib/bvse";
 import { shannonRadius } from "../lib/analysis";
 import { fmt, ionLabel } from "../lib/format";
 import { LineChart, ScatterChart, StackedBars, seriesColor } from "./charts";
-import { useI18n, type MsgKey, type TFn } from "../i18n";
-import { shapeName } from "../i18n/domain";
+import { useI18n, type TFn } from "../i18n";
+import { featDesc, featLabel, fmtFeature, groupLabel, shapeName } from "../i18n/domain";
 
 interface Props {
   doc: Doc;
   update: (f: (d: Doc) => Partial<Doc>) => void;
   entry: FeatureEntry | undefined;
   error?: string;
-}
-
-export const featLabel = (t: TFn, key: string) => t(`feat.${key}.label` as MsgKey);
-export const featDesc = (t: TFn, key: string) => t(`feat.${key}.desc` as MsgKey);
-export const groupLabel = (t: TFn, g: string) => t(`group.${g}` as MsgKey);
-
-export function fmtFeature(t: TFn, def: FeatureDef | undefined, v: FeatureValue | undefined): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "string") {
-    if (def?.key === "system") return t(`system.${v}` as MsgKey);
-    if (def?.key === "anionFrame") return v.endsWith("~") ? t("frame.near", { type: v.slice(0, -1) }) : t("frame.is", { type: v });
-    return v;
-  }
-  if (!Number.isFinite(v)) return "—";
-  const d = def?.digits ?? 3;
-  return v.toFixed(d);
 }
 
 export const shareKeys = (t: TFn) => [

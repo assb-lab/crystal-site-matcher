@@ -3,7 +3,7 @@ import type { Doc } from "../lib/doc";
 import type { FeatureEntry } from "../lib/useFeatures";
 import { FEATURE_DEFS, FEATURE_BY_KEY, FeatureGroup, GROUPS } from "../lib/features";
 import { BarChart, LineChart, ScatterChart, seriesColor } from "./charts";
-import { featDesc, featLabel, fmtFeature, groupLabel } from "./FeaturesPanel";
+import { featDesc, featLabel, fmtFeature, groupLabel } from "../i18n/domain";
 import { translate, useT, type MsgKey, type TFn } from "../i18n";
 
 /** CSV is always written in English so files are comparable across UI languages. */
