@@ -63,6 +63,7 @@ pnpm install
 pnpm dev                 # 開発サーバー
 pnpm build               # dist/index.html（1 ファイル）を生成
 pnpm typecheck
+pnpm test                # 目盛りと LiCoO2 特徴量表示の回帰テスト
 ```
 
 ### 依存パッケージの安全設定（`pnpm-workspace.yaml`）

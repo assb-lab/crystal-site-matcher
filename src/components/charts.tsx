@@ -56,6 +56,7 @@ export function padRange(lo: number, hi: number, frac = 0.12): [number, number] 
 
 export function niceTicks(lo: number, hi: number, n = 5): number[] {
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [];
+  if (!(n > 0) || !Number.isFinite(n)) return [];
   if (hi < lo) [lo, hi] = [hi, lo];
   if (hi - lo <= minSpan(lo, hi)) [lo, hi] = padRange(lo, hi);
   const span = hi - lo;
@@ -68,9 +69,10 @@ export function niceTicks(lo: number, hi: number, n = 5): number[] {
   // below the floating-point resolution of t, which froze the page (issue #2).
   const k0 = Math.ceil(lo / step - 1e-9),
     k1 = Math.floor(hi / step + 1e-9);
-  if (k1 - k0 > 1000) return [lo, hi];
+  const count = k1 - k0 + 1;
+  if (!Number.isSafeInteger(k0) || !Number.isSafeInteger(k1) || count > 1000) return [lo, hi];
   const out: number[] = [];
-  for (let k = k0; k <= k1; k++) out.push(+(k * step).toPrecision(12));
+  for (let i = 0; i < count; i++) out.push(+((k0 + i) * step).toPrecision(12));
   return out;
 }
 
