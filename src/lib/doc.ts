@@ -1,5 +1,6 @@
 // A "document" = one opened CIF with all of its per-structure settings.
 import { CifBlock, parseCif } from "./cif";
+import { MsgError } from "./messages";
 import { BondSettings, BondTable, computeBonds, defaultBondSettings } from "./bonding";
 import { RadiusKind } from "./analysis";
 import { Crystal, Neighbor, buildNeighborTable, crystalFromCif, formulaString, guessOxidationStates } from "./structure";
@@ -37,7 +38,7 @@ export function blocksWithAtoms(text: string): CifBlock[] {
 }
 
 export function createDoc(blocks: CifBlock[], fileName: string, blockIdx: number, colorSlot: number, preferSite?: string): Doc {
-  if (blocks.length === 0) throw new Error("原子座標を含むデータブロックが見つかりません（_atom_site_fract_x が必要です）。");
+  if (blocks.length === 0) throw new MsgError("err.noAtomBlock");
   const idx = Math.min(blockIdx, blocks.length - 1);
   const crystal = crystalFromCif(blocks[idx]);
   const g = guessOxidationStates(crystal);

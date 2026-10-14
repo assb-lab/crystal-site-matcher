@@ -4,6 +4,7 @@ import { chargeBalance, formulaString, guessOxidationStates } from "../lib/struc
 import { BondSettings, BondTable, relevantPairs } from "../lib/bonding";
 import { elementColor } from "../lib/data";
 import { fmt, ionLabel, rgbCss } from "../lib/format";
+import { tMsg, useT } from "../i18n";
 
 interface Props {
   crystal: Crystal;
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function StructurePanel(p: Props) {
+  const t = useT();
   const { crystal: cr, ox, bondSettings: bs } = p;
   const L = cr.lattice;
   const { formula, Z } = formulaString(cr);
@@ -34,12 +36,12 @@ export default function StructurePanel(p: Props) {
     <div className="stack">
       <section className="card">
         <div className="card-head">
-          <h2>結晶データ</h2>
+          <h2>{t("struct.crystal")}</h2>
           <span className="muted small">{p.loaded.fileName}</span>
         </div>
         {p.loaded.blocks.length > 1 && (
           <label className="field" htmlFor="block-select">
-            <span>データブロック</span>
+            <span>{t("struct.block")}</span>
             <select id="block-select" value={p.loaded.blockIdx} onChange={(e) => p.onBlock(parseInt(e.target.value, 10))}>
               {p.loaded.blocks.map((b, i) => (
                 <option key={i} value={i}>
@@ -51,18 +53,18 @@ export default function StructurePanel(p: Props) {
         )}
         <dl className="metrics">
           <div>
-            <dt>組成</dt>
+            <dt>{t("struct.formula")}</dt>
             <dd className="mono">
               {formula} <span className="muted">(Z = {Z})</span>
             </dd>
           </div>
           <div>
-            <dt>空間群</dt>
+            <dt>{t("feat.sg.label")}</dt>
             <dd>
               <span className="mono">{cr.spaceGroup.symbol}</span>
               {cr.spaceGroup.number ? <span className="muted"> (No. {cr.spaceGroup.number})</span> : null}
               <div className="muted small">
-                {cr.spaceGroup.source} · 対称操作 {cr.nOps} 個
+                {t(`sg.source.${cr.spaceGroup.source.kind}`, { setting: cr.spaceGroup.source.setting ?? "" })} · {t("struct.nOps", { n: cr.nOps })}
               </div>
             </dd>
           </div>
@@ -79,18 +81,18 @@ export default function StructurePanel(p: Props) {
             </dd>
           </div>
           <div>
-            <dt>体積</dt>
+            <dt>{t("struct.volume")}</dt>
             <dd className="mono">{L.volume.toFixed(3)} Å³</dd>
           </div>
           <div>
-            <dt>単位胞内の原子位置</dt>
+            <dt>{t("struct.positions")}</dt>
             <dd className="mono">{cr.positions.length}</dd>
           </div>
         </dl>
         {cr.warnings.length > 0 && (
           <ul className="warnings">
             {cr.warnings.map((w, i) => (
-              <li key={i}>{w}</li>
+              <li key={i}>{tMsg(t, w)}</li>
             ))}
           </ul>
         )}
@@ -98,21 +100,21 @@ export default function StructurePanel(p: Props) {
 
       <section className="card">
         <div className="card-head">
-          <h2>サイトと酸化数</h2>
-          <span className={`tag ${Math.abs(balance) < 0.01 ? "tag-ok" : "tag-warn"}`}>電荷の合計 {balance > 0 ? "+" : ""}{fmt(balance, 2)}</span>
+          <h2>{t("struct.sitesOx")}</h2>
+          <span className={`tag ${Math.abs(balance) < 0.01 ? "tag-ok" : "tag-warn"}`}>{t("struct.charge", { q: `${balance > 0 ? "+" : ""}${fmt(balance, 2)}` })}</span>
         </div>
         <p className="muted small">
-          {fromCif ? "酸化数は CIF の記載から読み込みました。" : p.oxGuessed ? "CIF に酸化数がないため、電荷中性になるよう推定しました。必要に応じて修正してください。" : ""}
+          {fromCif ? t("struct.oxFromCif") : p.oxGuessed ? t("struct.oxGuessed") : ""}
         </p>
         <div className="table-wrap">
           <table className="data">
             <thead>
               <tr>
-                <th>サイト</th>
-                <th>元素</th>
-                <th className="num">酸化数</th>
-                <th className="num">占有率</th>
-                <th className="num">多重度</th>
+                <th>{t("col.site")}</th>
+                <th>{t("col.element")}</th>
+                <th className="num">{t("col.ox")}</th>
+                <th className="num">{t("col.occ")}</th>
+                <th className="num">{t("col.mult")}</th>
                 <th className="num">CN</th>
                 <th className="num">x, y, z</th>
               </tr>
@@ -131,7 +133,7 @@ export default function StructurePanel(p: Props) {
                     <td className="num" onClick={(e) => e.stopPropagation()}>
                       <input
                         id={`ox-${s.label}`}
-                        aria-label={`${s.label} の酸化数`}
+                        aria-label={t("struct.oxOf", { site: s.label })}
                         className="num ox-input"
                         type="number"
                         step={1}
@@ -153,13 +155,13 @@ export default function StructurePanel(p: Props) {
           </table>
         </div>
         <button className="btn btn-ghost btn-small" onClick={() => p.setOx(guessOxidationStates(cr).byLabel)} id="reguess">
-          酸化数を初期値に戻す
+          {t("struct.resetOx")}
         </button>
       </section>
 
       <section className="card">
         <div className="card-head">
-          <h2>結合の判定距離</h2>
+          <h2>{t("struct.cutoffs")}</h2>
           <button
             className="btn btn-ghost btn-small"
             id="reset-bonds"
@@ -171,21 +173,21 @@ export default function StructurePanel(p: Props) {
               }))
             }
           >
-            すべて初期値に戻す
+            {t("struct.resetAll")}
           </button>
         </div>
         <label className="checkline" htmlFor="ionic-only">
           <input id="ionic-only" type="checkbox" checked={bs.ionicOnly} onChange={(e) => p.setBondSettings((b) => ({ ...b, ionicOnly: e.target.checked }))} />
-          陽イオン–陰イオン間だけを結合とみなす
+          {t("struct.ionicOnly")}
         </label>
         <div className="table-wrap">
           <table className="data pairs">
             <thead>
               <tr>
-                <th>ペア</th>
-                <th>有効</th>
-                <th>上限 (Å)</th>
-                <th>初期値</th>
+                <th>{t("col.pair")}</th>
+                <th>{t("col.enabled")}</th>
+                <th>{t("col.max")}</th>
+                <th>{t("col.default")}</th>
               </tr>
             </thead>
             <tbody>
@@ -196,13 +198,13 @@ export default function StructurePanel(p: Props) {
                   <tr key={k}>
                     <td className="mono">{k.replace("-", "–")}</td>
                     <td>
-                      <input id={`on-${k}`} aria-label={`${k} を有効にする`} type="checkbox" checked={r.on} onChange={(e) => setPair(k, { on: e.target.checked })} />
+                      <input id={`on-${k}`} aria-label={t("struct.enablePair", { pair: k })} type="checkbox" checked={r.on} onChange={(e) => setPair(k, { on: e.target.checked })} />
                     </td>
                     <td>
                       <div className="pair-edit">
                         <input
                           id={`range-${k}`}
-                          aria-label={`${k} の上限`}
+                          aria-label={t("struct.pairMax", { pair: k })}
                           type="range"
                           min={1}
                           max={Math.max(4.5, r.def + 1)}
@@ -213,7 +215,7 @@ export default function StructurePanel(p: Props) {
                         />
                         <input
                           id={`max-${k}`}
-                          aria-label={`${k} の上限 (数値)`}
+                          aria-label={t("struct.pairMaxNum", { pair: k })}
                           className="num"
                           type="number"
                           step={0.01}
@@ -225,7 +227,7 @@ export default function StructurePanel(p: Props) {
                       </div>
                     </td>
                     <td className="muted small">
-                      {r.def.toFixed(2)} <span title={r.source === "VESTA" ? "VESTA の既定値" : r.source === "Shannon" ? "シャノン半径の和 × 1.25（VESTA 値がある場合は × 1.1 を下限）" : "原子半径の和 × 1.15"}>({r.source})</span>
+                      {r.def.toFixed(2)} <span title={t(`cutoff.source.${r.source}`)}>({r.source})</span>
                     </td>
                   </tr>
                 );
@@ -235,13 +237,13 @@ export default function StructurePanel(p: Props) {
         </div>
         {Object.keys(bs.siteOverride).length > 0 && (
           <div className="note small">
-            サイト個別の設定:{" "}
+            {t("struct.overrides")}{" "}
             {Object.entries(bs.siteOverride).map(([g, v]) => (
               <span key={g} className="tag">
                 {g} ≤ {v.toFixed(3)} Å{" "}
                 <button
                   className="linkbtn"
-                  aria-label={`${g} の個別設定を解除`}
+                  aria-label={t("struct.clearOverride", { site: g })}
                   onClick={() =>
                     p.setBondSettings((b) => {
                       const so = { ...b.siteOverride };
@@ -260,13 +262,14 @@ export default function StructurePanel(p: Props) {
 
       <section className="card">
         <div className="card-head">
-          <h2>データの出典</h2>
+          <h2>{t("struct.sources")}</h2>
         </div>
         <ul className="refs small">
-          <li>イオン半径: R. D. Shannon, Acta Cryst. A32, 751 (1976)</li>
-          <li>結合原子価パラメータ: N. E. Brese &amp; M. O'Keeffe, Acta Cryst. B47, 192 (1991)</li>
-          <li>結合判定距離の既定値: VESTA (K. Momma &amp; F. Izumi)</li>
-          <li>空間群の対称操作・理想多面体・元素データ: pymatgen (MIT License)</li>
+          <li>{t("src.shannon")}: R. D. Shannon, Acta Cryst. A32, 751 (1976)</li>
+          <li>{t("src.bv")}: N. E. Brese &amp; M. O'Keeffe, Acta Cryst. B47, 192 (1991)</li>
+          <li>{t("src.bvse")}: BVlain (A. D. Dembitskiy, MIT) / softBV — H. Chen &amp; S. Adams, IUCrJ 4, 614 (2017)</li>
+          <li>{t("src.vesta")}: VESTA (K. Momma &amp; F. Izumi)</li>
+          <li>{t("src.pymatgen")}: pymatgen (MIT License)</li>
         </ul>
       </section>
     </div>

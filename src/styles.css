@@ -1862,3 +1862,9 @@ tr.is-host td {
 tr.is-out td {
   opacity: 0.55;
 }
+.lang-toggle button {
+  width: auto;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}

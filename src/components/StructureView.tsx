@@ -11,6 +11,7 @@ import { analyzeSite } from "../lib/analysis";
 import { SceneExtras, ViewOptions, atomKey, buildScene, parseAtomKey } from "../lib/scene";
 import { ionLabel } from "../lib/format";
 import type { FeatureEntry } from "../lib/useFeatures";
+import { useT, type MsgKey } from "../i18n";
 
 export type Tab = "site" | "subst" | "feat" | "struct";
 
@@ -32,6 +33,7 @@ function resolve<T>(u: SetStateAction<T>, prev: T): T {
 }
 
 export default function StructureView({ doc, update, onReplace, tab, setTab, entry, featError }: Props) {
+  const t = useT();
   const { crystal, ox, bondSettings, view } = doc;
   const { bonds, rmax } = useMemo(() => deriveBonds(crystal, ox, bondSettings), [crystal, ox, bondSettings]);
   const [viewCmd, setViewCmd] = useState<{ dir: ViewDir; n: number } | null>(null);
@@ -132,16 +134,11 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
     }
   };
 
-  const tabs: [Tab, string][] = [
-    ["struct", "構造と結合"],
-    ["site", "サイト解析"],
-    ["subst", "置換候補"],
-    ["feat", "特徴量"],
-  ];
+  const tabs: Tab[] = ["struct", "site", "subst", "feat"];
 
   return (
     <main className="layout">
-      <section className="stage" aria-label="結晶構造の3D表示">
+      <section className="stage" aria-label={t("stage.aria")}>
         <div className="stage-head">
           <div className="stage-title">
             <strong>{crystal.title}</strong>
@@ -156,26 +153,26 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
           {(view.showIso || view.showHops) && (
             <div className="overlay-chips">
               {view.showIso && (
-                <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showIso: false }))} title="等エネルギー面を隠す">
+                <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showIso: false }))} title={t("stage.hideIso")}>
                   BVSE ΔE ≤ {(view.isoLevel ?? autoIsoLevel(entry)).toFixed(2)} eV ✕
                 </button>
               )}
               {view.showHops && (
-                <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showHops: false }))} title="ホップを隠す">
-                  ホップ経路 ✕
+                <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showHops: false }))} title={t("stage.hideHops")}>
+                  {t("stage.hops")} ✕
                 </button>
               )}
             </div>
           )}
-          <p className="stage-hint">ドラッグで回転・右ドラッグで移動・ホイールで拡大。原子をクリックするとそのサイトを解析します。</p>
+          <p className="stage-hint">{t("stage.hint")}</p>
         </div>
       </section>
 
       <aside className="panel">
         <nav className="tabs" role="tablist">
-          {tabs.map(([k, label]) => (
+          {tabs.map((k) => (
             <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "is-active" : ""}`} onClick={() => setTab(k)} id={`tab-${k}`}>
-              {label}
+              {t(`tab.${k}` as MsgKey)}
             </button>
           ))}
         </nav>

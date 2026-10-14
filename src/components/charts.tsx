@@ -1,6 +1,7 @@
 // Small SVG chart kit: line, scatter, horizontal bar and 100%-stacked bar charts.
 // Colours come from CSS tokens (--series-1 … --series-8, --ink, --muted, --grid) so both themes work.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useT } from "../i18n";
 
 /**
  * Track the rendered width so 1 SVG unit = 1 CSS pixel (text keeps its size at any width).
@@ -147,6 +148,7 @@ export function LineChart({
   xFmt?: (v: number) => string;
   yFmt?: (v: number) => string;
 }) {
+  const t = useT();
   const { W, wrap, attach } = useWidth();
   const H = height,
     ml = 48,
@@ -168,7 +170,7 @@ export function LineChart({
   if (!all.length)
     return (
       <div ref={attach}>
-        <p className="muted small">データがありません。</p>
+        <p className="muted small">{t("chart.noData")}</p>
       </div>
     );
 
@@ -306,6 +308,7 @@ export function ScatterChart({
   yFmt?: (v: number) => string;
   r?: number;
 }) {
+  const t = useT();
   const { W, wrap, attach } = useWidth();
   const H = height,
     ml = 54,
@@ -324,7 +327,7 @@ export function ScatterChart({
   if (!pts.length)
     return (
       <div ref={attach}>
-        <p className="muted small">両方の値がそろった構造がありません。</p>
+        <p className="muted small">{t("chart.noPairs")}</p>
       </div>
     );
   const X = (x: number) => ml + ((x - x0) / (x1 - x0)) * (W - ml - mr);
@@ -407,12 +410,13 @@ export function BarChart({
   unit?: string;
   fmt?: (v: number) => string;
 }) {
+  const t = useT();
   const { W, attach } = useWidth();
   const valid = items.filter((i) => i.value !== null && Number.isFinite(i.value)) as { id: string; label: string; value: number; color: string }[];
   if (!valid.length)
     return (
       <div ref={attach}>
-        <p className="muted small">値がありません。</p>
+        <p className="muted small">{t("chart.noValues")}</p>
       </div>
     );
   const row = 30,
@@ -426,7 +430,7 @@ export function BarChart({
   const ticks = niceTicks(lo, hi, W < 440 ? 3 : 4);
   return (
     <div className="chart" ref={attach}>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="棒グラフ">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("chart.bar")}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={X(t)} x2={X(t)} y1={mt} y2={H - 20} className="grid" />
@@ -484,6 +488,7 @@ export function StackedBars({
   rows: { id: string; label: string; parts: Record<string, number> }[];
   keys: { key: string; label: string; color: string }[];
 }) {
+  const t = useT();
   const [tip, setTip] = useState<Tip | null>(null);
   const { W, wrap, attach } = useWidth();
   const row = 30,
@@ -493,7 +498,7 @@ export function StackedBars({
   return (
     <div className="chart" ref={attach}>
       <Legend items={keys.map((k) => ({ label: k.label, color: k.color }))} />
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="割合" onPointerLeave={() => setTip(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("chart.fractions")} onPointerLeave={() => setTip(null)}>
         {rows.map((r, i) => {
           const tot = keys.reduce((s, k) => s + (r.parts[k.key] ?? 0), 0);
           const y = i * row + 4;
@@ -506,7 +511,7 @@ export function StackedBars({
               </text>
               {tot === 0 ? (
                 <text x={ml} y={y + 15} className="bar-value muted-fill">
-                  連結なし
+                  {t("chart.noLinks")}
                 </text>
               ) : (
                 keys.map((k) => {
@@ -536,7 +541,7 @@ export function StackedBars({
                                 <i style={{ background: k.color }} />
                                 <span>{k.label}</span>
                                 <b>
-                                  {((v / tot) * 100).toFixed(0)}%（{+v.toFixed(2)}）
+                                  {((v / tot) * 100).toFixed(0)}% ({+v.toFixed(2)})
                                 </b>
                               </div>
                             </>

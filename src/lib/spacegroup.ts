@@ -1,4 +1,5 @@
 import sgRaw from "../data/spacegroups.json";
+import { MsgError } from "./messages";
 
 export interface SymOp {
   R: number[][]; // 3x3 rotation acting on fractional coords
@@ -29,7 +30,7 @@ function parseFraction(s: string): number {
 /** Parse "x-y+1/3, -z, 1/2+x" style operators. */
 export function parseSymOp(text: string): SymOp {
   const parts = text.replace(/['"\s]/g, "").toLowerCase().split(",");
-  if (parts.length !== 3) throw new Error(`対称操作を解釈できません: ${text}`);
+  if (parts.length !== 3) throw new MsgError("err.symop", { text });
   const R = [
     [0, 0, 0],
     [0, 0, 0],

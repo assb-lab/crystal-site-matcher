@@ -8,12 +8,16 @@ import { BondTable } from "./bonding";
 export type RadiusKind = "ionic" | "crystal";
 export type RadiusMethod = "exact" | "interp" | "extrap" | "subst";
 
-export interface RadiusResult {
+/** How a radius was obtained: tabulated, or derived from the listed CN entries. */
+export interface RadiusNote {
+  method: RadiusMethod;
+  cnFrom: string[]; // CN labels used ("VI", "IVSQ", ...)
+}
+
+export interface RadiusResult extends RadiusNote {
   r: number;
   cn: number; // requested CN
   exact: boolean;
-  method: RadiusMethod;
-  note: string; // how the value was obtained
   spin: "" | "HS" | "LS";
   cnLabel: string;
 }
@@ -43,7 +47,7 @@ export function shannonRadius(
   }
   const cns = [...byCn.keys()].sort((a, b) => a - b);
   const exact = byCn.get(cn);
-  if (exact) return { r: val(exact), cn, exact: true, method: "exact", note: `CN ${exact.cnLabel}`, spin: exact.spin, cnLabel: exact.cnLabel };
+  if (exact) return { r: val(exact), cn, exact: true, method: "exact", cnFrom: [exact.cnLabel], spin: exact.spin, cnLabel: exact.cnLabel };
   const lo = cns.filter((c) => c < cn),
     hi = cns.filter((c) => c > cn);
   const ent = (c: number) => byCn.get(c)!;
@@ -51,7 +55,7 @@ export function shannonRadius(
     const a = lo[lo.length - 1],
       b = hi[0];
     const r = val(ent(a)) + ((val(ent(b)) - val(ent(a))) * (cn - a)) / (b - a);
-    return { r, cn, exact: false, method: "interp", note: `CN ${roman(a)}–${roman(b)} の内挿`, spin: ent(a).spin || ent(b).spin, cnLabel: roman(cn) };
+    return { r, cn, exact: false, method: "interp", cnFrom: [roman(a), roman(b)], spin: ent(a).spin || ent(b).spin, cnLabel: roman(cn) };
   }
   const side = lo.length ? lo.slice(-2) : hi.slice(0, 2);
   if (side.length === 2) {
@@ -59,10 +63,10 @@ export function shannonRadius(
     const slope = (val(ent(b)) - val(ent(a))) / (b - a);
     const ref = lo.length ? b : a;
     const r = val(ent(ref)) + slope * (cn - ref);
-    return { r, cn, exact: false, method: "extrap", note: `CN ${roman(a)}, ${roman(b)} からの外挿`, spin: ent(ref).spin, cnLabel: roman(cn) };
+    return { r, cn, exact: false, method: "extrap", cnFrom: [roman(a), roman(b)], spin: ent(ref).spin, cnLabel: roman(cn) };
   }
   const only = ent(side[0]);
-  return { r: val(only), cn, exact: false, method: "subst", note: `CN ${only.cnLabel} の値で代用`, spin: only.spin, cnLabel: only.cnLabel };
+  return { r: val(only), cn, exact: false, method: "subst", cnFrom: [only.cnLabel], spin: only.spin, cnLabel: only.cnLabel };
 }
 
 /** Bond-valence R0 from Brese & O'Keeffe (1991) element parameters. */
@@ -88,7 +92,7 @@ export interface LigandInfo {
   label: string; // group key of the ligand position
   cn: number; // coordination number of the ligand itself
   r: number | null; // occupancy-weighted Shannon radius of the ligand
-  rNote: string;
+  rNotes: RadiusNote[]; // non-tabulated radii that went into r
 }
 
 export interface SiteAnalysis {
@@ -177,16 +181,16 @@ export function analyzeSite(cr: Crystal, ox: Record<string, number>, bonds: Bond
     const lcn = bonds.bonded[nb.j].length;
     let rs = 0,
       ws = 0;
-    const notes: string[] = [];
+    const notes: RadiusNote[] = [];
     for (const s of species) {
       const rr = shannonRadius(s.el, s.ox, lcn, { kind: opts.kind });
       if (rr) {
         rs += rr.r * s.occ;
         ws += s.occ;
-        if (!rr.exact) notes.push(rr.note);
+        if (!rr.exact) notes.push({ method: rr.method, cnFrom: rr.cnFrom });
       }
     }
-    return { nb, species, label: Q.group, cn: lcn, r: ws > 0 ? rs / ws : null, rNote: notes.join(", ") };
+    return { nb, species, label: Q.group, cn: lcn, r: ws > 0 ? rs / ws : null, rNotes: notes };
   });
 
   const ds = ligNb.map((n) => n.d);
@@ -300,12 +304,7 @@ export interface CandidateResult extends Candidate {
 
 export type Verdict = "good" | "possible" | "hard" | "unlikely";
 
-export const VERDICT_LABEL: Record<Verdict, string> = {
-  good: "入りやすい",
-  possible: "可能性あり",
-  hard: "条件次第",
-  unlikely: "困難",
-};
+export const VERDICTS: Verdict[] = ["good", "possible", "hard", "unlikely"];
 
 const PAULING: Record<number, [number, number]> = {
   2: [0, 0.155],
