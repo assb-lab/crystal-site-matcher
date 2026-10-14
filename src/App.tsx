@@ -7,6 +7,8 @@ import { Doc, blocksWithAtoms, createDoc, deriveBonds, featureSig } from "./lib/
 import { buildScene } from "./lib/scene";
 import { useFeatures } from "./lib/useFeatures";
 import { SAMPLES, STARTUP_SAMPLES } from "./samples";
+import ThemeToggle from "./components/ThemeToggle";
+import { useThemePref } from "./lib/theme";
 
 const MAX_BLOCKS_PER_FILE = 24;
 
@@ -37,6 +39,7 @@ export default function App() {
   // Always start on the lightweight structure tab; heavy feature calculations only run
   // once the user opens the Features tab (or the comparison view). See #4.
   const [tab, setTab] = useState<Tab>("struct");
+  const [themePref, setThemePref] = useThemePref();
   const [banner, setBanner] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -199,6 +202,7 @@ export default function App() {
             }}
           />
           <span className="muted small hide-narrow">複数ファイル・複数データブロックに対応。ドラッグ＆ドロップでも開けます。</span>
+          <ThemeToggle value={themePref} onChange={setThemePref} />
         </div>
       </header>
 
