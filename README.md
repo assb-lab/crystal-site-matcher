@@ -85,14 +85,24 @@ UI の文字列は `src/i18n/ja.ts`（基準）と `src/i18n/en.ts` にありま
 
 技術構成: Vite + React + TypeScript + three.js（TrackballControls、ConvexGeometry）、`vite-plugin-singlefile` で 1 ファイル化。
 
-### 参照データの再生成
+### 参照データの再生成（Python / uv）
 
-`src/data/*.json` は pymatgen 同梱のデータと BVlain のパラメータから作っています。
+`src/data/*.json` は pymatgen 同梱のデータと BVlain のパラメータから、`src/samples/*.cif` は `scripts/make-samples.py` で作っています。Python の環境は [uv](https://docs.astral.sh/uv/) で、入力データはコミット SHA で固定しています。
+
+| ファイル | 固定するもの |
+| --- | --- |
+| `pyproject.toml` / `uv.lock` | 依存（numpy）とそのハッシュ。`exclude-newer` で指定日時より後に公開されたものは使わない |
+| `.python-version` | Python のバージョン |
+| `scripts/sources.lock` | pymatgen / pymatgen-core / BVlain のリポジトリとコミット SHA |
 
 ```bash
-python3 scripts/build-data.py <pymatgen リポジトリ> <pymatgen-core リポジトリ> <BVlain リポジトリ>
-python3 scripts/make-samples.py   # src/samples/*.cif を再生成
+pnpm data:fetch   # = bash scripts/fetch-sources.sh（.sources/ に固定コミットを取得）
+pnpm data         # = uv run --locked scripts/build-data.py …（src/data/*.json を再生成）
+pnpm samples      # = uv run --locked scripts/make-samples.py（src/samples/*.cif を再生成）
+git diff --stat src/data src/samples   # 差分が出なければ再現できている
 ```
+
+依存を更新するときは、`pyproject.toml` の `exclude-newer` を 7 日以上前の日時に進めてから `uv lock` を実行し、`uv.lock` をコミットします。入力データを更新するときは `scripts/sources.lock` の SHA を書き換えます。
 
 ## ライセンス
 

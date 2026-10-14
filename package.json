@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test tests/*.test.mjs",
-    "data": "python3 scripts/build-data.py"
+    "data:fetch": "bash scripts/fetch-sources.sh",
+    "data": "uv run --locked scripts/build-data.py .sources/pymatgen .sources/pymatgen-core .sources/BVlain",
+    "samples": "uv run --locked scripts/make-samples.py"
   },
   "dependencies": {
     "react": "^19.1.0",
