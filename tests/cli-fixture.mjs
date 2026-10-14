@@ -50,6 +50,25 @@ try {
   assert.equal(bad.records.length, 0);
   assert.match(bad.errors[0].message, /_atom_site_fract_x/);
 
+  // bottleneck radii are never negative; paths through a framework ion are not hops (#16)
+  for (const f of ['Li3N', 'SrTiO3', 'TiO2_rutile', 'AgI_alpha', 'Y3Al5O12']) {
+    const res = await x.extractFromText(await readFile(`src/samples/${f}.cif`, 'utf8'), f, { grid: null });
+    const hs = res.records[0].hops;
+    assert.ok(hs.length > 0, f);
+    assert.ok(hs.every((h) => h.rb >= 0), `${f}: negative rb`);
+    assert.ok(res.records[0].values.rb_min >= 0, `${f}: rb_min`);
+  }
+  // Li3N: the Li1–N–Li1 line along c (3.875 Å) runs through N and is dropped
+  const li3n = await x.extractFromText(await readFile('src/samples/Li3N.cif', 'utf8'), 'Li3N', { grid: null });
+  assert.ok(!li3n.records[0].hops.some((h) => h.from === 'Li1' && h.to === 'Li1' && Math.abs(h.d - 3.875) < 1e-3));
+  assert.ok(li3n.records[0].hops.some((h) => h.from === 'Li2' && h.to === 'Li2' && Math.abs(h.d - 3.875) < 1e-3));
+  // SrTiO3: O–Ti–O through the Ti at (½,½,½) is dropped, the octahedron-edge O–O hops (2.76 Å) stay
+  const sto = await x.extractFromText(await readFile('src/samples/SrTiO3.cif', 'utf8'), 'SrTiO3', { grid: null });
+  assert.equal(sto.records[0].mobile, 'O');
+  const atTi = (f) => f.every((c) => Math.abs(c - Math.floor(c) - 0.5) < 1e-6);
+  assert.ok(!sto.records[0].hops.some((h) => atTi(h.neckFrac)));
+  assert.ok(sto.records[0].hops.some((h) => Math.abs(h.d - 2.7613) < 1e-3));
+
   // formatting
   assert.equal(x.num(-0), '0');
   assert.equal(x.num(1 / 3), '0.33333333');

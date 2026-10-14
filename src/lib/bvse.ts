@@ -116,6 +116,48 @@ export class FrameworkField {
     return `${Math.floor(x / this.binSize)},${Math.floor(y / this.binSize)},${Math.floor(z / this.binSize)}`;
   }
 
+  /**
+   * Closest approach of the straight segment A→B to the framework ions (exact, not sampled).
+   * - clearance: min over ions of (distance from the ion centre to the segment − ionic radius);
+   *   negative when the segment enters an ion sphere.
+   * - at: point on the segment where the clearance is smallest.
+   * - core: min over ions of (distance to the segment / ionic radius); below ~0.5 the segment runs
+   *   through the ion itself rather than squeezing past its surface.
+   */
+  segment(A: Vec3, B: Vec3): { clearance: number; at: Vec3; core: number } {
+    const AB: Vec3 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+    const L2 = AB[0] * AB[0] + AB[1] * AB[1] + AB[2] * AB[2] || 1e-12;
+    let rMax = 0;
+    for (const ion of this.ions) if (ion.r > rMax) rMax = ion.r;
+    const pad = rMax + 0.5;
+    const lo = (i: number) => Math.floor((Math.min(A[i], B[i]) - pad) / this.binSize);
+    const hi = (i: number) => Math.floor((Math.max(A[i], B[i]) + pad) / this.binSize);
+    let clearance = Infinity,
+      core = Infinity,
+      at: Vec3 = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2];
+    for (let i = lo(0); i <= hi(0); i++)
+      for (let j = lo(1); j <= hi(1); j++)
+        for (let k = lo(2); k <= hi(2); k++) {
+          const l = this.bins.get(`${i},${j},${k}`);
+          if (!l) continue;
+          for (const idx of l) {
+            const ion = this.ions[idx];
+            const cx = ion.x - A[0],
+              cy = ion.y - A[1],
+              cz = ion.z - A[2];
+            const t = Math.max(0, Math.min(1, (cx * AB[0] + cy * AB[1] + cz * AB[2]) / L2));
+            const P: Vec3 = [A[0] + AB[0] * t, A[1] + AB[1] * t, A[2] + AB[2] * t];
+            const d = Math.hypot(ion.x - P[0], ion.y - P[1], ion.z - P[2]);
+            if (d - ion.r < clearance) {
+              clearance = d - ion.r;
+              at = P;
+            }
+            if (ion.r > 0 && d / ion.r < core) core = d / ion.r;
+          }
+        }
+    return { clearance, at, core };
+  }
+
   /** Returns [energy (eV), void distance (Å)] at a Cartesian point. */
   eval(x: number, y: number, z: number): [number, number] {
     const bx = Math.floor(x / this.binSize),
