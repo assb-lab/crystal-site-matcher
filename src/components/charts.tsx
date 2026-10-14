@@ -39,18 +39,38 @@ function mergeMarkers(ms: { x: number; label: string }[], X: (x: number) => numb
 export const SERIES_COUNT = 8;
 export const seriesColor = (slot: number) => (slot >= 0 && slot < SERIES_COUNT ? `var(--series-${slot + 1})` : "var(--series-other)");
 
+/** Smallest span treated as non-zero, relative to the magnitude of the values. */
+function minSpan(lo: number, hi: number) {
+  return 1e-9 * Math.max(1, Math.abs(lo), Math.abs(hi));
+}
+
+/**
+ * Widen a [lo, hi] range that is empty or only floating-point noise wide
+ * (e.g. symmetry-equivalent values such as identical hop lengths) so axes stay readable.
+ */
+export function padRange(lo: number, hi: number, frac = 0.12): [number, number] {
+  const span = hi - lo;
+  const pad = span > minSpan(lo, hi) ? span * frac : Math.max(Math.abs(lo) * 0.05, 0.05);
+  return [lo - pad, hi + pad];
+}
+
 export function niceTicks(lo: number, hi: number, n = 5): number[] {
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [];
-  if (hi === lo) {
-    hi = lo + 1;
-  }
+  if (hi < lo) [lo, hi] = [hi, lo];
+  if (hi - lo <= minSpan(lo, hi)) [lo, hi] = padRange(lo, hi);
   const span = hi - lo;
   const step0 = span / n;
   const mag = 10 ** Math.floor(Math.log10(step0));
   const err = step0 / mag;
   const step = (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1) * mag;
+  if (!(step > 0) || !Number.isFinite(step)) return [lo, hi];
+  // Count ticks by integer index: an accumulating `t += step` can stall when step is
+  // below the floating-point resolution of t, which froze the page (issue #2).
+  const k0 = Math.ceil(lo / step - 1e-9),
+    k1 = Math.floor(hi / step + 1e-9);
+  if (k1 - k0 > 1000) return [lo, hi];
   const out: number[] = [];
-  for (let t = Math.ceil(lo / step - 1e-9) * step; t <= hi + step * 1e-9; t += step) out.push(+t.toPrecision(12));
+  for (let k = k0; k <= k1; k++) out.push(+(k * step).toPrecision(12));
   return out;
 }
 
@@ -295,16 +315,8 @@ export function ScatterChart({
   const { x0, x1, y0, y1 } = useMemo(() => {
     const xs = pts.map((p) => p.x),
       ys = pts.map((p) => p.y);
-    let a = Math.min(...xs),
-      b = Math.max(...xs),
-      c = Math.min(...ys),
-      d = Math.max(...ys);
-    const px = (b - a || Math.abs(a) || 1) * 0.12,
-      py = (d - c || Math.abs(c) || 1) * 0.12;
-    a -= px;
-    b += px;
-    c -= py;
-    d += py;
+    const [a, b] = padRange(Math.min(...xs), Math.max(...xs));
+    const [c, d] = padRange(Math.min(...ys), Math.max(...ys));
     return { x0: a, x1: b, y0: c, y1: d };
   }, [pts]);
   if (!pts.length)
