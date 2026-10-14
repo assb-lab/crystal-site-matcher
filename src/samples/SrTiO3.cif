@@ -1,0 +1,73 @@
+# SrTiO3 (cubic perovskite)
+# 
+data_SrTiO3
+_chemical_name_common 'SrTiO3 (cubic perovskite)'
+_cell_length_a 3.905
+_cell_length_b 3.905
+_cell_length_c 3.905
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+_symmetry_space_group_name_H-M 'P m -3 m'
+_symmetry_Int_Tables_number 221
+loop_
+_symmetry_equiv_pos_site_id
+_symmetry_equiv_pos_as_xyz
+1 'x,y,z'
+2 '-y,x,z'
+3 '-x,-y,z'
+4 'y,-x,z'
+5 'x,-y,-z'
+6 'y,x,-z'
+7 '-x,y,-z'
+8 '-y,-x,-z'
+9 'z,x,y'
+10 '-x,z,y'
+11 '-z,-x,y'
+12 'x,-z,y'
+13 'z,-x,-y'
+14 'x,z,-y'
+15 '-z,x,-y'
+16 '-x,-z,-y'
+17 'y,z,x'
+18 'y,-z,-x'
+19 'z,y,-x'
+20 '-y,z,-x'
+21 '-z,-y,-x'
+22 '-y,-z,x'
+23 'z,-y,x'
+24 '-z,y,x'
+25 '-x,-y,-z'
+26 'y,-x,-z'
+27 'x,y,-z'
+28 '-y,x,-z'
+29 '-x,y,z'
+30 '-y,-x,z'
+31 'x,-y,z'
+32 'y,x,z'
+33 '-z,-x,-y'
+34 'x,-z,-y'
+35 'z,x,-y'
+36 '-x,z,-y'
+37 '-z,x,y'
+38 '-x,-z,y'
+39 'z,-x,y'
+40 'x,z,y'
+41 '-y,-z,-x'
+42 '-y,z,x'
+43 '-z,-y,x'
+44 'y,-z,x'
+45 'z,y,x'
+46 'y,z,-x'
+47 '-z,y,-x'
+48 'z,-y,-x'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Sr1 Sr 0 0 0 1
+Ti1 Ti 0.5 0.5 0.5 1
+O1 O 0.5 0.5 0 1
