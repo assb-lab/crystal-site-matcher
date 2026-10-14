@@ -134,7 +134,7 @@ export interface Hop {
   b: number;
   t: Vec3; // translation of b
   d: number;
-  rb: number; // bottleneck radius (Å)
+  rb: number; // bottleneck radius (Å, ≥ 0): free radius along the straight path
   mid: Vec3; // Cartesian point of the bottleneck
 }
 
@@ -200,6 +200,12 @@ function bccIdeal(): IdealPolyhedron {
 const BCC = bccIdeal();
 const FCC = IDEAL_POLYHEDRA.find((p) => p.sym === "C:12")!;
 const HCP = IDEAL_POLYHEDRA.find((p) => p.sym === "AC:12")!;
+
+/**
+ * A mobile–mobile pair is not counted as a hop when its straight line passes within this fraction of a
+ * framework ion's radius from the ion centre, i.e. through the ion rather than through a window.
+ */
+export const HOP_CORE_BLOCK = 0.5;
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
@@ -422,19 +428,11 @@ export function computeStaticFeatures(
         const rev = `${n.j}|${p.index}|${n.t.map((x) => -x).join(",")}`;
         if (p.index > n.j || (p.index === n.j && key > rev)) continue;
         const A = p.cart;
-        let rb = Infinity,
-          mid: Vec3 = A;
-        const S = 24;
-        for (let s = 1; s < S; s++) {
-          const t = s / S;
-          const x: Vec3 = [A[0] + n.v[0] * t, A[1] + n.v[1] * t, A[2] + n.v[2] * t];
-          const r = field.eval(x[0], x[1], x[2])[1];
-          if (r < rb) {
-            rb = r;
-            mid = x;
-          }
-        }
-        hops.push({ a: p.index, b: n.j, t: n.t, d: n.d, rb, mid });
+        const seg = field.segment(A, [A[0] + n.v[0], A[1] + n.v[1], A[2] + n.v[2]]);
+        // The straight line runs through a framework ion (e.g. Li–N–Li, O–Ti–O): not a direct hop.
+        if (seg.core < HOP_CORE_BLOCK) continue;
+        // Narrower than the Shannon spheres: no free radius left on the straight path.
+        hops.push({ a: p.index, b: n.j, t: n.t, d: n.d, rb: Math.max(0, seg.clearance), mid: seg.at });
       }
     const deg = new Map<number, number>();
     for (const h of hops) {
