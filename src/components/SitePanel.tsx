@@ -3,8 +3,10 @@ import type { Crystal, Neighbor } from "../lib/structure";
 import type { BondSettings, BondTable } from "../lib/bonding";
 import { pairKey } from "../lib/bonding";
 import { SiteAnalysis, RadiusKind, spinsFor } from "../lib/analysis";
-import { POLY_JA, elementColor, roman } from "../lib/data";
+import { elementColor, roman } from "../lib/data";
 import { fmt, ionLabel, pct, rgbCss } from "../lib/format";
+import { useI18n, useT } from "../i18n";
+import { cshmWord, radiusNote, radiusNotes, shapeName } from "../i18n/domain";
 
 interface Props {
   crystal: Crystal;
@@ -27,22 +29,10 @@ interface Props {
   goSubst: () => void;
 }
 
-export function shapeName(sym: string | undefined, en: string | undefined) {
-  if (!sym) return "—";
-  return POLY_JA[sym] ?? en ?? sym;
-}
-
-export function cshmWord(s: number) {
-  if (s < 0.5) return "ほぼ理想形";
-  if (s < 1.5) return "わずかに歪み";
-  if (s < 3) return "歪みあり";
-  if (s < 6) return "大きく歪み";
-  return "対応する理想形なし";
-}
-
 export default function SitePanel(p: Props) {
+  const { t, lang } = useI18n();
   const { crystal, ox, bonds, bondSettings, analysis: a } = p;
-  if (!a) return <p className="muted">3D 表示の原子をクリックしてサイトを選んでください。</p>;
+  if (!a) return <p className="muted">{t("site.pick")}</p>;
   const P = crystal.positions[a.pos];
   const eligible = bonds.eligible[a.pos];
   const override = bondSettings.siteOverride[a.group];
@@ -71,7 +61,7 @@ export default function SitePanel(p: Props) {
     <div className="stack">
       <div className="site-head">
         <label className="field" htmlFor="site-select">
-          <span>解析するサイト</span>
+          <span>{t("site.select")}</span>
           <select id="site-select" value={a.group} onChange={(e) => p.onSelectGroup(e.target.value)}>
             {crystal.groups.map((g) => {
               const q = crystal.positions[g.positions[0]];
@@ -87,18 +77,18 @@ export default function SitePanel(p: Props) {
         <div className="site-ident">
           <div className="ion-big">{ionLabel(a.host.el, a.host.ox, a.rHost?.spin || undefined)}</div>
           <div className="muted small mono">
-            ({P.frac.map((v) => v.toFixed(4)).join(", ")}) · 単位胞内 {crystal.groups.find((g) => g.key === a.group)?.positions.length} 個
+            ({P.frac.map((v) => v.toFixed(4)).join(", ")}) · {t("site.inCell", { n: crystal.groups.find((g) => g.key === a.group)?.positions.length ?? 0 })}
           </div>
         </div>
         {(P.occupants.length > 1 || hostSpins.length > 1) && (
           <div className="row gap-s wrap">
             {P.occupants.length > 1 && (
               <label className="field-inline" htmlFor="host-occ">
-                <span>置き換える元のイオン</span>
+                <span>{t("site.hostOcc")}</span>
                 <select id="host-occ" value={p.hostSite ?? a.host.site} onChange={(e) => p.setHostSite(parseInt(e.target.value, 10))}>
                   {P.occupants.map((o) => (
                     <option key={o.site} value={o.site}>
-                      {crystal.sites[o.site].label} {ionLabel(crystal.sites[o.site].element, ox[crystal.sites[o.site].label])} (占有率 {o.occ})
+                      {crystal.sites[o.site].label} {ionLabel(crystal.sites[o.site].element, ox[crystal.sites[o.site].label])} ({t("col.occ")} {o.occ})
                     </option>
                   ))}
                 </select>
@@ -106,11 +96,11 @@ export default function SitePanel(p: Props) {
             )}
             {hostSpins.length > 1 && (
               <label className="field-inline" htmlFor="host-spin">
-                <span>スピン状態</span>
+                <span>{t("site.spin")}</span>
                 <select id="host-spin" value={p.hostSpin || "HS"} onChange={(e) => p.setHostSpin(e.target.value as "HS" | "LS")}>
                   {hostSpins.map((s) => (
                     <option key={s} value={s}>
-                      {s === "HS" ? "高スピン (HS)" : "低スピン (LS)"}
+                      {t(s === "HS" ? "site.hs" : "site.ls")}
                     </option>
                   ))}
                 </select>
@@ -122,54 +112,54 @@ export default function SitePanel(p: Props) {
 
       <div className="kpis">
         <div className="kpi">
-          <span className="kpi-label">配位数</span>
+          <span className="kpi-label">{t("site.cn")}</span>
           <span className="kpi-value">{a.cn}</span>
           <span className="kpi-sub">ECoN {fmt(a.econ, 2)}</span>
         </div>
         <div className="kpi kpi-wide">
-          <span className="kpi-label">多面体</span>
-          <span className="kpi-value kpi-text">{shapeName(best?.sym, best?.name)}</span>
-          <span className="kpi-sub">{best ? `CShM ${fmt(best.cshm, 2)} · ${cshmWord(best.cshm)}` : "—"}</span>
+          <span className="kpi-label">{t("site.poly")}</span>
+          <span className="kpi-value kpi-text">{shapeName(lang, best?.sym, best?.name)}</span>
+          <span className="kpi-sub">{best ? `CShM ${fmt(best.cshm, 2)} · ${cshmWord(t, best.cshm)}` : "—"}</span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">平均結合長</span>
+          <span className="kpi-label">{t("site.dMean")}</span>
           <span className="kpi-value mono">{fmt(a.dMean, 3)}</span>
           <span className="kpi-sub">Å</span>
         </div>
         <div className="kpi">
           <span className="kpi-label">BVS</span>
           <span className="kpi-value mono">{fmt(a.bvsHost, 2)}</span>
-          <span className="kpi-sub">形式価数 {Math.abs(a.host.ox)} ({pct(bvsDev, 0)})</span>
+          <span className="kpi-sub">{t("site.formal", { v: Math.abs(a.host.ox) })} ({pct(bvsDev, 0)})</span>
         </div>
       </div>
 
       <section className="card">
         <div className="card-head">
-          <h2>結合距離のしきい値</h2>
-          <span className="muted small">点 = 近接原子、塗り = 配位に含める</span>
+          <h2>{t("site.cutoff")}</h2>
+          <span className="muted small">{t("site.cutoffHint")}</span>
         </div>
         <DistanceStrip crystal={crystal} neighbors={eligible} bonded={new Set(bonds.bonded[a.pos])} cut={cut} rmax={p.rmax} onCut={p.onCutoff} />
         <div className="row gap-s wrap cut-row">
           <ShellButtons neighbors={eligible} cut={cut} onCut={p.onCutoff} />
           <label className="field-inline" htmlFor="cut-input">
-            <span>上限</span>
+            <span>{t("site.max")}</span>
             <input id="cut-input" type="number" step={0.01} min={0.5} max={p.rmax} value={cut.toFixed(3)} onChange={(e) => +e.target.value > 0 && p.onCutoff(+e.target.value)} className="num" />
             <span>Å</span>
           </label>
-          <div className="seg" role="radiogroup" aria-label="適用範囲">
-            <button role="radio" aria-checked={p.cutScope === "pair"} className={p.cutScope === "pair" ? "is-on" : ""} onClick={() => p.setCutScope("pair")} title="同じ元素ペアのすべての結合に適用">
-              {pairNames.length ? pairNames.join(", ") : "元素ペア"} 全体
+          <div className="seg" role="radiogroup" aria-label={t("site.scope")}>
+            <button role="radio" aria-checked={p.cutScope === "pair"} className={p.cutScope === "pair" ? "is-on" : ""} onClick={() => p.setCutScope("pair")} title={t("site.scopePairTitle")}>
+              {t("site.scopePair", { pairs: pairNames.length ? pairNames.join(", ") : t("site.elementPair") })}
             </button>
-            <button role="radio" aria-checked={p.cutScope === "site"} className={p.cutScope === "site" ? "is-on" : ""} onClick={() => p.setCutScope("site")} title="このサイトの結合だけに適用">
-              このサイトのみ
+            <button role="radio" aria-checked={p.cutScope === "site"} className={p.cutScope === "site" ? "is-on" : ""} onClick={() => p.setCutScope("site")} title={t("site.scopeSiteTitle")}>
+              {t("site.scopeSite")}
             </button>
           </div>
         </div>
         {override !== undefined && (
           <p className="note small">
-            このサイトには個別のしきい値 {override.toFixed(3)} Å が設定されています。{" "}
+            {t("site.overrideNote", { d: override.toFixed(3) })}{" "}
             <button className="linkbtn" onClick={p.onClearOverride}>
-              元素ペアの設定に戻す
+              {t("site.clearOverride")}
             </button>
           </p>
         )}
@@ -177,17 +167,17 @@ export default function SitePanel(p: Props) {
 
       <section className="card">
         <div className="card-head">
-          <h2>配位子</h2>
-          <span className="muted small">r<sub>X</sub> は配位子自身の配位数でのシャノン半径</span>
+          <h2>{t("site.ligands")}</h2>
+          <span className="muted small">{t("site.ligandsHint")}</span>
         </div>
         <div className="table-wrap">
           <table className="data">
             <thead>
               <tr>
-                <th>サイト</th>
-                <th>イオン</th>
+                <th>{t("col.site")}</th>
+                <th>{t("col.ion")}</th>
                 <th className="num">d (Å)</th>
-                <th className="num">配位子の CN</th>
+                <th className="num">{t("site.ligandCn")}</th>
                 <th className="num">r<sub>X</sub> (Å)</th>
                 <th className="num">d − r<sub>X</sub></th>
               </tr>
@@ -202,9 +192,9 @@ export default function SitePanel(p: Props) {
                   <td>{l.species.map((s) => ionLabel(s.el, s.ox)).join("/")}</td>
                   <td className="num mono">{l.nb.d.toFixed(3)}</td>
                   <td className="num mono">{l.cn}</td>
-                  <td className="num mono" title={l.rNote}>
+                  <td className="num mono" title={l.rNotes.length ? radiusNotes(t, l.rNotes) : undefined}>
                     {fmt(l.r, 3)}
-                    {l.rNote && <sup className="approx">*</sup>}
+                    {l.rNotes.length > 0 && <sup className="approx">*</sup>}
                   </td>
                   <td className="num mono">{l.r !== null ? (l.nb.d - l.r).toFixed(3) : "—"}</td>
                 </tr>
@@ -216,78 +206,78 @@ export default function SitePanel(p: Props) {
 
       <section className="card">
         <div className="card-head">
-          <h2>サイトの大きさ</h2>
-          <div className="seg small" role="radiogroup" aria-label="半径の種類">
+          <h2>{t("site.size")}</h2>
+          <div className="seg small" role="radiogroup" aria-label={t("site.radiusKind")}>
             <button role="radio" aria-checked={p.radiusKind === "ionic"} className={p.radiusKind === "ionic" ? "is-on" : ""} onClick={() => p.setRadiusKind("ionic")}>
-              有効イオン半径
+              {t("site.ionic")}
             </button>
             <button role="radio" aria-checked={p.radiusKind === "crystal"} className={p.radiusKind === "crystal" ? "is-on" : ""} onClick={() => p.setRadiusKind("crystal")}>
-              結晶半径
+              {t("site.crystalR")}
             </button>
           </div>
         </div>
         <SizeGauge rSite={a.rSite} rHost={a.rHost?.r ?? null} hostLabel={`${ionLabel(a.host.el, a.host.ox)} (${a.rHost?.cnLabel ?? roman(a.cn)})`} />
         <dl className="metrics">
           <div>
-            <dt>サイトの空間半径 r<sub>site</sub> = ⟨d − r<sub>X</sub>⟩</dt>
+            <dt>{t("site.rSite")} r<sub>site</sub> = ⟨d − r<sub>X</sub>⟩</dt>
             <dd className="mono">{fmt(a.rSite, 3)} Å</dd>
           </div>
           <div>
             <dt>
-              ホストのシャノン半径 {ionLabel(a.host.el, a.host.ox)} ({a.rHost?.cnLabel ?? roman(a.cn)})
+              {t("site.rHost")} {ionLabel(a.host.el, a.host.ox)} ({a.rHost?.cnLabel ?? roman(a.cn)})
             </dt>
             <dd className="mono">
-              {fmt(a.rHost?.r, 3)} Å{a.rHost && !a.rHost.exact && <span className="approx-note"> {a.rHost.note}</span>}
+              {fmt(a.rHost?.r, 3)} Å{a.rHost && !a.rHost.exact && <span className="approx-note"> {radiusNote(t, a.rHost)}</span>}
             </dd>
           </div>
           <div>
-            <dt>差 (r<sub>site</sub> − r<sub>host</sub>) / r<sub>host</sub></dt>
+            <dt>{t("site.diff")} (r<sub>site</sub> − r<sub>host</sub>) / r<sub>host</sub></dt>
             <dd className="mono">{pct(fitDelta)}</dd>
           </div>
         </dl>
         <p className="note small">
           {fitDelta === null
-            ? "酸化数が未設定か、シャノン表に該当イオンがないため空間半径を計算できません。「構造と結合」タブで酸化数を確認してください。"
+            ? t("site.fit.none")
             : Math.abs(fitDelta) < 0.05
-              ? "結合距離とシャノン半径はよく一致しています。置換候補の比較はこの空間半径を基準に行います。"
+              ? t("site.fit.match")
               : fitDelta > 0
-                ? "サイトはホストイオンに比べて広めです。少し大きいイオンも入りやすい傾向があります。"
-                : "サイトはホストイオンに比べて窮屈です。少し小さいイオンのほうが収まりやすい傾向があります。"}
+                ? t("site.fit.wide")
+                : t("site.fit.tight")}
         </p>
         <button className="btn btn-primary btn-block" onClick={p.goSubst} id="go-subst">
-          このサイトに入るイオンを探す →
+          {t("site.goSubst")} →
         </button>
       </section>
 
       <section className="card">
         <div className="card-head">
-          <h2>多面体の形と歪み</h2>
+          <h2>{t("site.shape")}</h2>
         </div>
         <dl className="metrics">
           <div>
-            <dt>結合長の範囲</dt>
+            <dt>{t("site.dRange")}</dt>
             <dd className="mono">
               {fmt(a.dMin, 3)} – {fmt(a.dMax, 3)} Å
             </dd>
           </div>
           <div>
-            <dt>歪み指数 Δ (Baur)</dt>
+            <dt>{t("site.baur")} Δ (Baur)</dt>
             <dd className="mono">{fmt(a.distortion, 4)}</dd>
           </div>
           {a.qe !== null && (
             <div>
-              <dt>二次伸長 ⟨λ⟩</dt>
+              <dt>{t("site.qe")} ⟨λ⟩</dt>
               <dd className="mono">{fmt(a.qe, 4)}</dd>
             </div>
           )}
           {a.bav !== null && (
             <div>
-              <dt>結合角分散 σ² (deg²)</dt>
+              <dt>{t("site.bav")} σ² (deg²)</dt>
               <dd className="mono">{fmt(a.bav, 1)}</dd>
             </div>
           )}
           <div>
-            <dt>多面体体積</dt>
+            <dt>{t("site.volume")}</dt>
             <dd className="mono">{a.volume ? `${a.volume.toFixed(3)} Å³` : "—"}</dd>
           </div>
         </dl>
@@ -296,7 +286,7 @@ export default function SitePanel(p: Props) {
             <table className="data compact">
               <thead>
                 <tr>
-                  <th>理想多面体（CN {a.cn}）</th>
+                  <th>{t("site.ideal", { cn: a.cn })}</th>
                   <th className="num">CShM</th>
                 </tr>
               </thead>
@@ -304,7 +294,7 @@ export default function SitePanel(p: Props) {
                 {a.shapes.slice(0, 5).map((s, i) => (
                   <tr key={s.sym} className={i === 0 ? "is-best" : ""}>
                     <td>
-                      {shapeName(s.sym, s.name)} <span className="muted small">{s.name}</span>
+                      {shapeName(lang, s.sym, s.name)} {lang === "ja" && <span className="muted small">{s.name}</span>}
                     </td>
                     <td className="num mono">{s.cshm.toFixed(2)}</td>
                   </tr>
@@ -313,7 +303,7 @@ export default function SitePanel(p: Props) {
             </table>
           </div>
         )}
-        <p className="muted small">CShM: 連続形状尺度（0 で理想形と一致）。中心原子から配位子へのベクトルで評価しています。</p>
+        <p className="muted small">{t("site.cshmNote")}</p>
       </section>
     </div>
   );
@@ -328,16 +318,17 @@ function shellsOf(neighbors: Neighbor[]): number[] {
 }
 
 function ShellButtons({ neighbors, cut, onCut }: { neighbors: Neighbor[]; cut: number; onCut: (c: number) => void }) {
+  const t = useT();
   const shells = shellsOf(neighbors);
   const inc = shells.filter((d) => d <= cut + 1e-9).length;
   const mid = (i: number) => (i + 1 < shells.length ? (shells[i] + shells[i + 1]) / 2 : shells[i] + 0.15);
   return (
     <div className="row gap-xs">
-      <button className="btn btn-small" disabled={inc <= 1} onClick={() => onCut(inc >= 2 ? mid(inc - 2) : cut)} title="一番外側の配位殻を外す" id="shell-minus">
-        − 殻
+      <button className="btn btn-small" disabled={inc <= 1} onClick={() => onCut(inc >= 2 ? mid(inc - 2) : cut)} title={t("site.shellMinusTitle")} id="shell-minus">
+        − {t("site.shell")}
       </button>
-      <button className="btn btn-small" disabled={inc >= shells.length} onClick={() => onCut(mid(inc))} title="次の配位殻まで含める" id="shell-plus">
-        ＋ 殻
+      <button className="btn btn-small" disabled={inc >= shells.length} onClick={() => onCut(mid(inc))} title={t("site.shellPlusTitle")} id="shell-plus">
+        + {t("site.shell")}
       </button>
     </div>
   );
@@ -363,6 +354,7 @@ function DistanceStrip({
     ml = 14,
     mr = 14,
     base = 92;
+  const t = useT();
   const [local, setLocal] = useState<number | null>(null);
   const dragging = useRef(false);
   const lastCount = useRef(-1);
@@ -434,7 +426,7 @@ function DistanceStrip({
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         role="slider"
-        aria-label="結合距離の上限"
+        aria-label={t("site.cutoffMax")}
         aria-valuemin={xMin}
         aria-valuemax={xMax}
         aria-valuenow={+shown.toFixed(3)}
@@ -486,6 +478,7 @@ function DistanceStrip({
 }
 
 function SizeGauge({ rSite, rHost, hostLabel }: { rSite: number | null; rHost: number | null; hostLabel: string }) {
+  const t = useT();
   if (rSite === null && rHost === null) return null;
   const vals = [rSite, rHost].filter((v): v is number => v !== null);
   const lo = Math.max(0, Math.min(...vals) * 0.7),
@@ -495,7 +488,7 @@ function SizeGauge({ rSite, rHost, hostLabel }: { rSite: number | null; rHost: n
     m = 70;
   const X = (r: number) => m + ((r - lo) / (hi - lo)) * (W - 2 * m);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="gauge" role="img" aria-label="サイト半径とホスト半径の比較">
+    <svg viewBox={`0 0 ${W} ${H}`} className="gauge" role="img" aria-label={t("site.gauge")}>
       <line x1={m} x2={W - m} y1={34} y2={34} className="strip-axis" />
       {rSite !== null && (
         <>

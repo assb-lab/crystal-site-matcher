@@ -11,103 +11,94 @@ import { Crystal, Neighbor, Vec3, add, buildNeighborTable, formulaString, toCart
 
 export type FeatureValue = number | string | null;
 
+/** Feature metadata. Names and descriptions live in the i18n dictionaries (feat.<key>.label / .desc). */
 export interface FeatureDef {
   key: string;
-  label: string;
   group: FeatureGroup;
   unit?: string;
   digits?: number;
-  desc: string;
   text?: boolean;
   async?: boolean; // filled by the grid (BVSE / void) calculation
 }
 
 export type FeatureGroup = "lattice" | "packing" | "bv" | "mobile" | "network" | "frame" | "grid";
 
-export const GROUP_LABEL: Record<FeatureGroup, string> = {
-  lattice: "格子と対称性",
-  packing: "充填とアニオン骨格",
-  bv: "結合原子価",
-  mobile: "可動イオンの副格子",
-  network: "ホップ経路とボトルネック",
-  frame: "多面体の連結",
-  grid: "BVSE と空隙（グリッド計算）",
-};
+export const GROUPS: FeatureGroup[] = ["lattice", "packing", "bv", "mobile", "network", "frame", "grid"];
 
 export const FEATURE_DEFS: FeatureDef[] = [
   // lattice
-  { key: "a", label: "a", unit: "Å", digits: 4, group: "lattice", desc: "格子定数 a" },
-  { key: "b", label: "b", unit: "Å", digits: 4, group: "lattice", desc: "格子定数 b" },
-  { key: "c", label: "c", unit: "Å", digits: 4, group: "lattice", desc: "格子定数 c" },
-  { key: "alpha", label: "α", unit: "°", digits: 3, group: "lattice", desc: "格子角 α" },
-  { key: "beta", label: "β", unit: "°", digits: 3, group: "lattice", desc: "格子角 β" },
-  { key: "gamma", label: "γ", unit: "°", digits: 3, group: "lattice", desc: "格子角 γ" },
-  { key: "c_a", label: "c/a", digits: 4, group: "lattice", desc: "軸比 c/a。同じ構造型の系列で異方性の変化を追う" },
-  { key: "b_a", label: "b/a", digits: 4, group: "lattice", desc: "軸比 b/a" },
-  { key: "V", label: "体積 V", unit: "Å³", digits: 2, group: "lattice", desc: "単位胞体積" },
-  { key: "Z", label: "Z", digits: 0, group: "lattice", desc: "単位胞あたりの化学式単位数" },
-  { key: "V_Z", label: "V/Z", unit: "Å³", digits: 2, group: "lattice", desc: "化学式単位あたりの体積" },
-  { key: "N", label: "原子数 N", digits: 2, group: "lattice", desc: "単位胞内の原子数（占有率で重み付け）" },
-  { key: "V_atom", label: "V/N", unit: "Å³", digits: 2, group: "lattice", desc: "原子あたりの体積。構造の疎密" },
-  { key: "density", label: "密度", unit: "g/cm³", digits: 3, group: "lattice", desc: "組成と体積から計算した結晶密度" },
-  { key: "sg", label: "空間群", group: "lattice", text: true, desc: "空間群記号と番号" },
-  { key: "system", label: "晶系", group: "lattice", text: true, desc: "空間群番号から求めた晶系" },
-  { key: "nSites", label: "独立サイト数", digits: 0, group: "lattice", desc: "CIF の独立な原子サイト（ラベル）の数" },
-  { key: "IG", label: "情報量 I_G", unit: "bit/atom", digits: 3, group: "lattice", desc: "Krivovichev の構造情報量 −Σ p_i log₂ p_i（p_i = 軌道の多重度 / N）。構造の複雑さ" },
-  { key: "IG_total", label: "情報量 I_G,total", unit: "bit/cell", digits: 2, group: "lattice", desc: "N · I_G" },
+  { key: "a", unit: "Å", digits: 4, group: "lattice" },
+  { key: "b", unit: "Å", digits: 4, group: "lattice" },
+  { key: "c", unit: "Å", digits: 4, group: "lattice" },
+  { key: "alpha", unit: "°", digits: 3, group: "lattice" },
+  { key: "beta", unit: "°", digits: 3, group: "lattice" },
+  { key: "gamma", unit: "°", digits: 3, group: "lattice" },
+  { key: "c_a", digits: 4, group: "lattice" },
+  { key: "b_a", digits: 4, group: "lattice" },
+  { key: "V", unit: "Å³", digits: 2, group: "lattice" },
+  { key: "Z", digits: 0, group: "lattice" },
+  { key: "V_Z", unit: "Å³", digits: 2, group: "lattice" },
+  { key: "N", digits: 2, group: "lattice" },
+  { key: "V_atom", unit: "Å³", digits: 2, group: "lattice" },
+  { key: "density", unit: "g/cm³", digits: 3, group: "lattice" },
+  { key: "sg", group: "lattice", text: true },
+  { key: "system", group: "lattice", text: true },
+  { key: "nSites", digits: 0, group: "lattice" },
+  { key: "IG", unit: "bit/atom", digits: 3, group: "lattice" },
+  { key: "IG_total", unit: "bit/cell", digits: 2, group: "lattice" },
   // packing
-  { key: "packing", label: "充填率", digits: 3, group: "packing", desc: "シャノン半径（各イオンの配位数での値）の球の体積和 / V" },
-  { key: "anionEls", label: "陰イオン", group: "packing", text: true, desc: "酸化数が負の元素" },
-  { key: "V_anion", label: "陰イオンあたりの体積", unit: "Å³", digits: 2, group: "packing", desc: "V / 陰イオン数。アニオン骨格の広がり" },
-  { key: "dXX", label: "陰イオン間最近接距離", unit: "Å", digits: 3, group: "packing", desc: "各陰イオンから最も近い陰イオンまでの距離の平均" },
-  { key: "anionFrame", label: "アニオン副格子の型", group: "packing", text: true, desc: "陰イオンの陰イオン配位を bcc（14配位）、fcc（立方八面体）、hcp（反立方八面体）と CShM で比べ、最も近い型" },
-  { key: "cshm_bcc", label: "CShM(bcc)", digits: 2, group: "packing", desc: "陰イオン副格子と bcc 配置の形状差（小さいほど bcc 的。Li 伝導に有利とされる）" },
-  { key: "cshm_fcc", label: "CShM(fcc)", digits: 2, group: "packing", desc: "陰イオン副格子と fcc 配置の形状差" },
-  { key: "cshm_hcp", label: "CShM(hcp)", digits: 2, group: "packing", desc: "陰イオン副格子と hcp 配置の形状差" },
-  { key: "dX_frame", label: "Δχ 骨格陽イオン–陰イオン", digits: 3, group: "packing", desc: "骨格陽イオンと配位陰イオンの電気陰性度差の平均（結合のイオン性の目安）" },
+  { key: "packing", digits: 3, group: "packing" },
+  { key: "anionEls", group: "packing", text: true },
+  { key: "V_anion", unit: "Å³", digits: 2, group: "packing" },
+  { key: "dXX", unit: "Å", digits: 3, group: "packing" },
+  { key: "anionFrame", group: "packing", text: true },
+  { key: "cshm_bcc", digits: 2, group: "packing" },
+  { key: "cshm_fcc", digits: 2, group: "packing" },
+  { key: "cshm_hcp", digits: 2, group: "packing" },
+  { key: "dX_frame", digits: 3, group: "packing" },
   // bond valence
-  { key: "GII", label: "GII", unit: "v.u.", digits: 3, group: "bv", desc: "Global Instability Index √⟨(BVS − |q|)²⟩。0.2 を超えると構造にひずみ・不安定性" },
-  { key: "bvs_mobile", label: "可動イオンの BVS", unit: "v.u.", digits: 3, group: "bv", desc: "可動イオンサイトの BVS 平均（Brese & O'Keeffe）" },
-  { key: "bvs_mobile_dev", label: "可動イオンの BVS 不整合", digits: 3, group: "bv", desc: "⟨BVS / |q|⟩ − 1。負は結合不足（サイトが緩い）、正は過剰" },
+  { key: "GII", unit: "v.u.", digits: 3, group: "bv" },
+  { key: "bvs_mobile", unit: "v.u.", digits: 3, group: "bv" },
+  { key: "bvs_mobile_dev", digits: 3, group: "bv" },
   // mobile sublattice
-  { key: "mobile", label: "可動イオン", group: "mobile", text: true, desc: "解析対象の可動イオン" },
-  { key: "n_mobile", label: "可動イオン数 / 胞", digits: 3, group: "mobile", desc: "Σ 多重度 × 占有率" },
-  { key: "rho_mobile", label: "可動イオン数密度", unit: "nm⁻³", digits: 2, group: "mobile", desc: "単位体積あたりの可動イオン数" },
-  { key: "mobileSites", label: "独立な可動イオンサイト数", digits: 0, group: "mobile", desc: "可動イオンを含む独立サイト（ラベル）の数" },
-  { key: "mobilePositions", label: "可動イオンサイト数 / 胞", digits: 0, group: "mobile", desc: "可動イオンが占めうる位置の数" },
-  { key: "vacancy", label: "空孔率", digits: 3, group: "mobile", desc: "1 − 可動イオン数 / 可動イオンサイト数" },
-  { key: "occEntropy", label: "占有エントロピー", unit: "k_B/サイト", digits: 3, group: "mobile", desc: "−⟨f ln f + (1−f) ln(1−f)⟩（理想混合近似の配置エントロピー）" },
-  { key: "cn_mobile", label: "可動イオンの平均 CN", digits: 2, group: "mobile", desc: "可動イオンサイトの配位数の平均（占有率で重み付け）" },
-  { key: "d_mobile", label: "可動イオン–陰イオン平均距離", unit: "Å", digits: 3, group: "mobile", desc: "可動イオンサイトの平均結合長" },
-  { key: "vol_mobile", label: "可動イオン多面体の体積", unit: "Å³", digits: 2, group: "mobile", desc: "可動イオンの配位多面体体積の平均" },
-  { key: "dist_mobile", label: "可動イオン多面体の歪み Δ", digits: 4, group: "mobile", desc: "可動イオンサイトの Baur 歪み指数の平均" },
-  { key: "dMM", label: "可動イオン間最近接距離", unit: "Å", digits: 3, group: "mobile", desc: "可動イオンサイト間の最短距離" },
-  { key: "dMF", label: "可動イオン–骨格陽イオン最近接", unit: "Å", digits: 3, group: "mobile", desc: "可動イオンと骨格陽イオンの最短距離（静電反発の目安）" },
+  { key: "mobile", group: "mobile", text: true },
+  { key: "n_mobile", digits: 3, group: "mobile" },
+  { key: "rho_mobile", unit: "nm⁻³", digits: 2, group: "mobile" },
+  { key: "mobileSites", digits: 0, group: "mobile" },
+  { key: "mobilePositions", digits: 0, group: "mobile" },
+  { key: "vacancy", digits: 3, group: "mobile" },
+  { key: "occEntropy", unit: "k_B", digits: 3, group: "mobile" },
+  { key: "cn_mobile", digits: 2, group: "mobile" },
+  { key: "d_mobile", unit: "Å", digits: 3, group: "mobile" },
+  { key: "vol_mobile", unit: "Å³", digits: 2, group: "mobile" },
+  { key: "dist_mobile", digits: 4, group: "mobile" },
+  { key: "dMM", unit: "Å", digits: 3, group: "mobile" },
+  { key: "dMF", unit: "Å", digits: 3, group: "mobile" },
   // network
-  { key: "hopDegree", label: "ホップ次数", digits: 2, group: "network", desc: "各可動イオンサイトからホップ距離以内にある可動イオンサイトの数の平均" },
-  { key: "hopDim", label: "ホップ網の次元", digits: 0, group: "network", desc: "ホップ距離以内のサイトをつないだネットワークが周期的につながる次元（0–3）" },
-  { key: "rb_min", label: "最小ボトルネック半径", unit: "Å", digits: 3, group: "network", desc: "ホップ経路（直線）上の、骨格イオン表面までの最短距離の最小値" },
-  { key: "rb_mean", label: "平均ボトルネック半径", unit: "Å", digits: 3, group: "network", desc: "ホップごとのボトルネック半径の平均" },
-  { key: "rb_1D", label: "ホップ網の通過半径 1D", unit: "Å", digits: 3, group: "network", desc: "ボトルネック半径がこの値以上のホップだけで 1 次元につながる最大値" },
-  { key: "rb_2D", label: "ホップ網の通過半径 2D", unit: "Å", digits: 3, group: "network", desc: "同 2 次元" },
-  { key: "rb_3D", label: "ホップ網の通過半径 3D", unit: "Å", digits: 3, group: "network", desc: "同 3 次元" },
+  { key: "hopDegree", digits: 2, group: "network" },
+  { key: "hopDim", digits: 0, group: "network" },
+  { key: "rb_min", unit: "Å", digits: 3, group: "network" },
+  { key: "rb_mean", unit: "Å", digits: 3, group: "network" },
+  { key: "rb_1D", unit: "Å", digits: 3, group: "network" },
+  { key: "rb_2D", unit: "Å", digits: 3, group: "network" },
+  { key: "rb_3D", unit: "Å", digits: 3, group: "network" },
   // framework connectivity
-  { key: "frame_corner", label: "骨格: 頂点共有の割合", digits: 3, group: "frame", desc: "骨格陽イオン多面体どうしの連結のうち頂点共有の割合（Jun et al. 2022 の指標）" },
-  { key: "frame_edge", label: "骨格: 稜共有の割合", digits: 3, group: "frame", desc: "同 稜共有" },
-  { key: "frame_face", label: "骨格: 面共有の割合", digits: 3, group: "frame", desc: "同 面共有" },
-  { key: "frame_isolated", label: "骨格: 孤立多面体の割合", digits: 3, group: "frame", desc: "他の骨格多面体と陰イオンを共有しない多面体の割合（例: 孤立 PS₄）" },
-  { key: "mm_face", label: "可動–可動: 面共有の割合", digits: 3, group: "frame", desc: "可動イオン多面体どうしの連結のうち面共有の割合（面共有はホップの窓になる）" },
-  { key: "mf_face", label: "可動–骨格: 面共有の割合", digits: 3, group: "frame", desc: "可動イオン多面体と骨格多面体の連結のうち面共有の割合（陽イオン反発が強い）" },
+  { key: "frame_corner", digits: 3, group: "frame" },
+  { key: "frame_edge", digits: 3, group: "frame" },
+  { key: "frame_face", digits: 3, group: "frame" },
+  { key: "frame_isolated", digits: 3, group: "frame" },
+  { key: "mm_face", digits: 3, group: "frame" },
+  { key: "mf_face", digits: 3, group: "frame" },
   // grid
-  { key: "E_1D", label: "BVSE 浸透障壁 1D", unit: "eV", digits: 3, group: "grid", async: true, desc: "BVSE 地形で低エネルギー領域が 1 次元につながる最小エネルギー（最小値基準）" },
-  { key: "E_2D", label: "BVSE 浸透障壁 2D", unit: "eV", digits: 3, group: "grid", async: true, desc: "同 2 次元" },
-  { key: "E_3D", label: "BVSE 浸透障壁 3D", unit: "eV", digits: 3, group: "grid", async: true, desc: "同 3 次元" },
-  { key: "siteE_sd", label: "サイトエネルギーの分散 σ_E", unit: "eV", digits: 3, group: "grid", async: true, desc: "可動イオンサイトの BVSE の標準偏差（多重度で重み付け）" },
-  { key: "siteE_range", label: "サイトエネルギーの幅", unit: "eV", digits: 3, group: "grid", async: true, desc: "可動イオンサイトの BVSE の最大 − 最小" },
-  { key: "R_1D", label: "空隙の浸透半径 1D", unit: "Å", digits: 3, group: "grid", async: true, desc: "骨格イオン表面から離れた空間が 1 次元につながる最大のプローブ半径" },
-  { key: "R_2D", label: "空隙の浸透半径 2D", unit: "Å", digits: 3, group: "grid", async: true, desc: "同 2 次元" },
-  { key: "R_3D", label: "空隙の浸透半径 3D", unit: "Å", digits: 3, group: "grid", async: true, desc: "同 3 次元" },
-  { key: "maxVoid", label: "最大空隙半径", unit: "Å", digits: 3, group: "grid", async: true, desc: "骨格イオン表面から最も離れた点までの距離（最大内接球半径）" },
+  { key: "E_1D", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_2D", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_3D", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "siteE_sd", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "siteE_range", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "R_1D", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "R_2D", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "R_3D", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "maxVoid", unit: "Å", digits: 3, group: "grid", async: true },
 ];
 
 export const FEATURE_BY_KEY = Object.fromEntries(FEATURE_DEFS.map((f) => [f.key, f])) as Record<string, FeatureDef>;
@@ -126,15 +117,16 @@ export function defaultMobile(cr: Crystal, ox: Record<string, number>): string |
   return null;
 }
 
+/** Crystal system code (translated in the UI as system.<code>). */
 export function crystalSystem(n: number | null): string {
-  if (!n) return "—";
-  if (n <= 2) return "三斜晶";
-  if (n <= 15) return "単斜晶";
-  if (n <= 74) return "直方晶";
-  if (n <= 142) return "正方晶";
-  if (n <= 167) return "三方晶";
-  if (n <= 194) return "六方晶";
-  return "立方晶";
+  if (!n) return "unknown";
+  if (n <= 2) return "triclinic";
+  if (n <= 15) return "monoclinic";
+  if (n <= 74) return "orthorhombic";
+  if (n <= 142) return "tetragonal";
+  if (n <= 167) return "trigonal";
+  if (n <= 194) return "hexagonal";
+  return "cubic";
 }
 
 export interface Hop {
@@ -329,7 +321,8 @@ export function computeStaticFeatures(
   {
     const cands = (["bcc", "fcc", "hcp"] as const).map((k) => [k, v[`cshm_${k}`] as number | null] as const).filter((x) => x[1] !== null) as [string, number][];
     cands.sort((a, b) => a[1] - b[1]);
-    v.anionFrame = cands.length ? (cands[0][1] < 6 ? `${cands[0][0]} 的` : `${cands[0][0]} に近い（歪み大）`) : "—";
+    // code: "bcc" / "fcc" / "hcp", with "~" appended when strongly distorted (CShM ≥ 6)
+    v.anionFrame = cands.length ? (cands[0][1] < 6 ? cands[0][0] : `${cands[0][0]}~`) : null;
   }
   {
     const dx: number[] = [];

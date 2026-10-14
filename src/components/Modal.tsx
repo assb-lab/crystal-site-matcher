@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { useT } from "../i18n";
 
 /** Native <dialog> modal: focus trapping, Esc and top-layer stacking come from the browser. */
 export default function Modal({
@@ -16,6 +17,7 @@ export default function Modal({
   wide?: boolean;
   id?: string;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -41,7 +43,7 @@ export default function Modal({
       <div className="modal-panel">
         <div className="modal-head">
           <h2 id={id ? `${id}-title` : undefined}>{title}</h2>
-          <button className="btn btn-ghost btn-small" onClick={onClose} aria-label="閉じる">
+          <button className="btn btn-ghost btn-small" onClick={onClose} aria-label={t("common.close")}>
             ✕
           </button>
         </div>

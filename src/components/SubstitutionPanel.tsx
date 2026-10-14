@@ -7,7 +7,6 @@ import {
   CandidateResult,
   SiteAnalysis,
   ScoreOpts,
-  VERDICT_LABEL,
   allCandidates,
   candKey,
   chargesFor,
@@ -17,7 +16,8 @@ import {
 } from "../lib/analysis";
 import { ELEMENTS, SHANNON, roman } from "../lib/data";
 import { fmt, ionLabel, pct, signed } from "../lib/format";
-import { shapeName } from "./SitePanel";
+import { useI18n, useT, type Lang, type TFn } from "../i18n";
+import { radiusNote, shapeName } from "../i18n/domain";
 
 interface Props {
   analysis: SiteAnalysis | null;
@@ -32,6 +32,7 @@ type ChargeFilter = "same" | "pm1" | "all";
 type Quality = "reliable" | "all";
 
 export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup }: Props) {
+  const { t, lang } = useI18n();
   const [opts, setOpts] = useState<ScoreOpts>({ sizeTol: 0.15, useBVS: true, useCharge: true });
   const [chargeFilter, setChargeFilter] = useState<ChargeFilter>("pm1");
   const [quality, setQuality] = useState<Quality>("reliable");
@@ -107,11 +108,11 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
   };
 
   const filterSummary = [
-    chargeFilter === "same" ? "同じ価数" : chargeFilter === "pm1" ? "価数差 ±1 まで" : "すべての価数",
-    quality === "reliable" ? "表・内挿の半径のみ" : "外挿・代用の半径も含む",
-    excludeRadio ? "放射性元素を除く" : "放射性元素も含む",
-    `サイズ許容幅 ${Math.round(opts.sizeTol * 100)}%`,
-  ].join("・");
+    t(`subst.sum.charge.${chargeFilter}`),
+    t(quality === "reliable" ? "subst.sum.reliable" : "subst.sum.allRadii"),
+    t(excludeRadio ? "subst.sum.noRadio" : "subst.sum.radio"),
+    t("subst.sum.tol", { tol: Math.round(opts.sizeTol * 100) }),
+  ].join(t("subst.sum.sep"));
 
   const ptCell = (el: string, mode: "compare" | "pick"): CellInfo => {
     const best = bestByEl.get(el);
@@ -122,14 +123,14 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
         state: best.verdict,
         value: best.score.toFixed(0),
         sub: charges.map((q) => signed(q)).join(" "),
-        title: `${ionLabel(best.el, best.ox, best.spin || undefined)}  スコア ${best.score.toFixed(0)}（${VERDICT_LABEL[best.verdict]}）`,
+        title: t("subst.cellTitle", { ion: ionLabel(best.el, best.ox, best.spin || undefined), score: best.score.toFixed(0), verdict: t(`verdict.${best.verdict}`) }),
       };
     }
-    if (hasSameSign) return { state: "neutral", title: mode === "compare" ? `${el}: 現在の条件では候補なし` : el };
-    return { state: "disabled", title: `${el}: シャノン表に該当する価数のイオンなし` };
+    if (hasSameSign) return { state: "neutral", title: mode === "compare" ? t("subst.cellNone", { el }) : el };
+    return { state: "disabled", title: t("subst.cellNoIon", { el }) };
   };
 
-  if (!a) return <p className="muted">先に 3D 表示かサイト解析タブでサイトを選んでください。</p>;
+  if (!a) return <p className="muted">{t("subst.pick")}</p>;
 
   const detail = selected ? evaluateCandidate(a, selected, opts) : null;
   const best = a.shapes[0];
@@ -138,9 +139,9 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
     <div className="stack">
       <div className="context">
         <div>
-          <span className="muted small">対象サイト</span>
+          <span className="muted small">{t("subst.target")}</span>
           <div className="context-main">
-            <select className="inline-select" value={a.group} onChange={(e) => onSelectGroup(e.target.value)} aria-label="対象サイト" id="subst-site">
+            <select className="inline-select" value={a.group} onChange={(e) => onSelectGroup(e.target.value)} aria-label={t("subst.target")} id="subst-site">
               {crystal.groups.map((g) => (
                 <option key={g.key} value={g.key}>
                   {g.key}
@@ -149,34 +150,34 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
             </select>
             <strong>{ionLabel(a.host.el, a.host.ox, a.rHost?.spin || undefined)}</strong>
             <span>
-              CN {roman(a.cn)} · {shapeName(best?.sym, best?.name)}
+              CN {roman(a.cn)} · {shapeName(lang, best?.sym, best?.name)}
             </span>
           </div>
         </div>
         <div className="context-figs">
           <div>
-            <span className="muted small">空間半径 r_site</span>
+            <span className="muted small">{t("subst.rSite")} r_site</span>
             <strong className="mono">{fmt(a.rSite, 3)} Å</strong>
           </div>
           <div>
-            <span className="muted small">ホスト r({roman(a.cn)})</span>
+            <span className="muted small">{t("subst.host")} r({roman(a.cn)})</span>
             <strong className="mono">{fmt(a.rHost?.r, 3)} Å</strong>
           </div>
           <div>
-            <span className="muted small">⟨d⟩ 実測</span>
+            <span className="muted small">⟨d⟩ {t("subst.observed")}</span>
             <strong className="mono">{fmt(a.dMean, 3)} Å</strong>
           </div>
         </div>
       </div>
 
       {a.rSite === null && (
-        <div className="banner banner-warn">配位子または中心イオンの酸化数が未設定のため、空間半径を計算できません。「構造と結合」タブで酸化数を入力してください。</div>
+        <div className="banner banner-warn">{t("subst.noRSite")}</div>
       )}
 
       <section className="card">
         <div className="card-head">
-          <h2>イオン半径マップ</h2>
-          <span className="muted small">CN {roman(a.cn)} でのシャノン半径。帯は r_site ±{Math.round(opts.sizeTol * 100)}% と ±{Math.round(opts.sizeTol * 200)}%</span>
+          <h2>{t("subst.map")}</h2>
+          <span className="muted small">{t("subst.mapHint", { cn: roman(a.cn), t1: Math.round(opts.sizeTol * 100), t2: Math.round(opts.sizeTol * 200) })}</span>
         </div>
         <RadiusMap a={a} results={filtered} tol={opts.sizeTol} selectedKey={selected ? candKey(selected) : null} onSelect={(r) => setSelected(r)} />
       </section>
@@ -187,11 +188,11 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
 
       <section className="card">
         <div className="card-head">
-          <h2>イオンを指定して評価</h2>
+          <h2>{t("subst.custom")}</h2>
         </div>
         <div className="row gap-s wrap">
           <label className="field-inline" htmlFor="c-el">
-            <span>元素</span>
+            <span>{t("col.element")}</span>
             <select id="c-el" value={cEl} onChange={(e) => chooseElement(e.target.value)}>
               {SHANNON_ELEMENTS.map((el) => (
                 <option key={el} value={el}>
@@ -201,10 +202,10 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
             </select>
           </label>
           <button className="btn btn-small" onClick={() => setPtMode("pick")} id="pick-element" aria-haspopup="dialog">
-            周期表から選ぶ
+            {t("subst.pickPt")}
           </button>
           <label className="field-inline" htmlFor="c-ox">
-            <span>価数</span>
+            <span>{t("subst.charge")}</span>
             <select
               id="c-ox"
               value={cOx}
@@ -223,7 +224,7 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
           </label>
           {spinsFor(cEl, cOx).length > 1 && (
             <label className="field-inline" htmlFor="c-spin">
-              <span>スピン</span>
+              <span>{t("subst.spin")}</span>
               <select id="c-spin" value={cSpin} onChange={(e) => setCSpin(e.target.value as "HS" | "LS")}>
                 {spinsFor(cEl, cOx).map((s) => (
                   <option key={s} value={s}>
@@ -234,44 +235,44 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
             </label>
           )}
           <button className="btn btn-primary" onClick={() => setSelected({ el: cEl, ox: cOx, spin: spinsFor(cEl, cOx).includes(cSpin) ? cSpin : (spinsFor(cEl, cOx)[0] ?? "") })} id="eval-ion">
-            評価する
+            {t("subst.evaluate")}
           </button>
         </div>
       </section>
 
       <section className="card">
         <div className="card-head">
-          <h2>候補ランキング</h2>
+          <h2>{t("subst.ranking")}</h2>
           <div className="row gap-s">
             <span className="muted small">
-              {filtered.length} / {results.length} イオン
+              {t("subst.count", { n: filtered.length, total: results.length })}
             </span>
             <button className="btn btn-small" onClick={() => setPtMode("compare")} id="open-ptable" aria-haspopup="dialog">
-              周期表で見る
+              {t("subst.viewPt")}
             </button>
           </div>
         </div>
         <div className="filters">
           <label className="slider" htmlFor="tol">
-            <span>サイズ許容幅 σ</span>
+            <span>{t("subst.tol")} σ</span>
             <input id="tol" type="range" min={0.05} max={0.3} step={0.01} value={opts.sizeTol} onChange={(e) => setOpts({ ...opts, sizeTol: +e.target.value })} />
             <span className="mono">{Math.round(opts.sizeTol * 100)}%</span>
           </label>
           <div className="checks">
             <label htmlFor="use-bvs">
-              <input id="use-bvs" type="checkbox" checked={opts.useBVS} onChange={(e) => setOpts({ ...opts, useBVS: e.target.checked })} /> BVS を評価に含める
+              <input id="use-bvs" type="checkbox" checked={opts.useBVS} onChange={(e) => setOpts({ ...opts, useBVS: e.target.checked })} /> {t("subst.useBVS")}
             </label>
             <label htmlFor="use-charge">
-              <input id="use-charge" type="checkbox" checked={opts.useCharge} onChange={(e) => setOpts({ ...opts, useCharge: e.target.checked })} /> 価数差を評価に含める
+              <input id="use-charge" type="checkbox" checked={opts.useCharge} onChange={(e) => setOpts({ ...opts, useCharge: e.target.checked })} /> {t("subst.useCharge")}
             </label>
           </div>
           <div className="row gap-s wrap">
-            <div className="seg small" role="radiogroup" aria-label="価数">
+            <div className="seg small" role="radiogroup" aria-label={t("subst.charge")}>
               {(
                 [
-                  ["same", "同じ価数"],
-                  ["pm1", "±1 まで"],
-                  ["all", "すべて"],
+                  ["same", t("subst.charge.same")],
+                  ["pm1", t("subst.charge.pm1")],
+                  ["all", t("subst.charge.all")],
                 ] as [ChargeFilter, string][]
               ).map(([k, l]) => (
                 <button key={k} role="radio" aria-checked={chargeFilter === k} className={chargeFilter === k ? "is-on" : ""} onClick={() => setChargeFilter(k)}>
@@ -279,18 +280,18 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
                 </button>
               ))}
             </div>
-            <div className="seg small" role="radiogroup" aria-label="半径の信頼度">
-              <button role="radio" aria-checked={quality === "reliable"} className={quality === "reliable" ? "is-on" : ""} onClick={() => setQuality("reliable")} title="表の値と内挿値のみ">
-                表・内挿のみ
+            <div className="seg small" role="radiogroup" aria-label={t("subst.quality")}>
+              <button role="radio" aria-checked={quality === "reliable"} className={quality === "reliable" ? "is-on" : ""} onClick={() => setQuality("reliable")} title={t("subst.reliableTitle")}>
+                {t("subst.reliable")}
               </button>
-              <button role="radio" aria-checked={quality === "all"} className={quality === "all" ? "is-on" : ""} onClick={() => setQuality("all")} title="外挿や別 CN の代用値も含める">
-                外挿も含む
+              <button role="radio" aria-checked={quality === "all"} className={quality === "all" ? "is-on" : ""} onClick={() => setQuality("all")} title={t("subst.allTitle")}>
+                {t("subst.allRadii")}
               </button>
             </div>
             <label className="checkline" htmlFor="ex-radio">
-              <input id="ex-radio" type="checkbox" checked={excludeRadio} onChange={(e) => setExcludeRadio(e.target.checked)} /> 放射性元素を除く
+              <input id="ex-radio" type="checkbox" checked={excludeRadio} onChange={(e) => setExcludeRadio(e.target.checked)} /> {t("subst.noRadio")}
             </label>
-            <input id="search" className="search" type="search" placeholder="元素で絞り込み (例: Mn)" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input id="search" className="search" type="search" placeholder={t("subst.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
         <div className="table-wrap">
@@ -298,12 +299,12 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
             <thead>
               <tr>
                 <th className="num">#</th>
-                <th>イオン</th>
+                <th>{t("col.ion")}</th>
                 <th className="num">r (Å)</th>
                 <th className="num">Δr</th>
                 <th className="num">BVS</th>
                 <th className="num">Δq</th>
-                <th>スコア</th>
+                <th>{t("col.score")}</th>
               </tr>
             </thead>
             <tbody>
@@ -318,9 +319,9 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
                   <td className="num mono muted">{i + 1}</td>
                   <td>
                     <strong>{ionLabel(r.el, r.ox, r.spin || undefined)}</strong>
-                    {r.el === a.host.el && r.ox === a.host.ox && <span className="tag tag-quiet">ホスト</span>}
+                    {r.el === a.host.el && r.ox === a.host.ox && <span className="tag tag-quiet">{t("subst.hostTag")}</span>}
                   </td>
-                  <td className="num mono" title={r.radius.note}>
+                  <td className="num mono" title={radiusNote(t, r.radius)}>
                     {r.radius.r.toFixed(3)}
                     {r.radius.method !== "exact" && <sup className="approx">{r.radius.method === "interp" ? "i" : "*"}</sup>}
                   </td>
@@ -337,38 +338,19 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
         </div>
         {filtered.length > showN && (
           <button className="btn btn-ghost btn-block" onClick={() => setShowN(showN + 40)} id="more">
-            さらに表示（残り {filtered.length - showN}）
+            {t("subst.more", { n: filtered.length - showN })}
           </button>
         )}
         <p className="muted small">
-          r の右肩: <sup className="approx">i</sup> = 隣接 CN の値から内挿、<sup className="approx">*</sup> = 外挿または別 CN の値で代用。Δr は r_site に対する差。
+          {t("subst.legend.r")} <sup className="approx">i</sup> = {t("subst.legend.i")}, <sup className="approx">*</sup> = {t("subst.legend.star")} {t("subst.legend.dr")}
         </p>
       </section>
 
       <details className="card method">
         <summary>
-          <h2>判定の考え方</h2>
+          <h2>{t("subst.method")}</h2>
         </summary>
-        <ol className="method-list">
-          <li>
-            <strong>サイトの空間半径.</strong> 各結合について実測距離 d<sub>i</sub> から配位子のシャノン半径 r<sub>X,i</sub>（配位子自身の配位数での値）を引き、平均した r<sub>site</sub> = ⟨d<sub>i</sub> − r<sub>X,i</sub>⟩ をサイトに収まる陽イオンの半径とみなします。
-          </li>
-          <li>
-            <strong>サイズの一致.</strong> 候補イオンの半径 r<sub>M</sub>（同じ配位数でのシャノン半径）との差 Δr = (r<sub>M</sub> − r<sub>site</sub>)/r<sub>site</sub> から、S<sub>size</sub> = exp(−½(Δr/σ)²) を計算します。σ は許容幅（既定 15%、Goldschmidt や Hume-Rothery の経験則に相当）。
-          </li>
-          <li>
-            <strong>結合原子価和 (BVS).</strong> 実際の結合距離のまま候補イオンを置いたときの V = Σ exp((R<sub>0</sub> − d<sub>i</sub>)/0.37) を Brese &amp; O'Keeffe (1991) のパラメータで求め、形式価数との比から S<sub>BVS</sub> = exp(−½((V/|q| − 1)/0.25)²)。価数ごとの大きさの違いを反映します。
-          </li>
-          <li>
-            <strong>価数差.</strong> Δq = 0 で 1、±1 で 0.75、±2 で 0.5、それ以上で 0.3。異価数置換では空孔・共ドープ・価数変化などの電荷補償が必要になります。
-          </li>
-          <li>
-            <strong>総合スコア.</strong> 重み付き幾何平均（サイズ 0.6、BVS 0.25、価数 0.15）× 100。75 以上「入りやすい」、50 以上「可能性あり」、25 以上「条件次第」、それ未満「困難」。
-          </li>
-        </ol>
-        <p className="muted small">
-          幾何学的な目安です。結晶場安定化エネルギー、共有結合性、サイト選択性、合成温度や雰囲気、第二相の生成などは考慮していません。シャノン半径は主に酸化物・フッ化物から求められた値です。
-        </p>
+        <MethodText lang={lang} />
       </details>
       <Modal
         open={ptMode !== null}
@@ -377,36 +359,33 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
         id="ptable-modal"
         title={
           ptMode === "pick" ? (
-            "元素を選ぶ"
+            t("subst.pt.pickTitle")
           ) : (
-            <>
-              周期表で比較 — {a.group}（{ionLabel(a.host.el, a.host.ox)}、CN {roman(a.cn)}）
-            </>
+            t("subst.pt.compareTitle", { site: a.group, ion: ionLabel(a.host.el, a.host.ox), cn: roman(a.cn) })
           )
         }
       >
         <p className="muted small">
-          {ptMode === "pick" ? "評価する元素をクリックしてください。色はランキングと同じ条件での最高スコアの判定です。" : "各元素のイオン（価数・スピン）のうち最もスコアの高いものの判定色と、そのスコア。"}
-          条件: {filterSummary}（ランキングと共通）。
+          {t(ptMode === "pick" ? "subst.pt.pickHint" : "subst.pt.compareHint")} {t("subst.pt.filters", { filters: filterSummary })}
         </p>
         <div className="pt-legend">
           {(["good", "possible", "hard", "unlikely"] as const).map((v) => (
             <span key={v} className={`pt-legend-item pt-${v}`}>
               <i />
-              {VERDICT_LABEL[v]}
+              {t(`verdict.${v}`)}
             </span>
           ))}
           <span className="pt-legend-item pt-neutral">
             <i />
-            条件外
+            {t("subst.outside")}
           </span>
           <span className="pt-legend-item pt-marked-key">
             <i />
-            ホスト元素
+            {t("subst.hostEl")}
           </span>
         </div>
         <PeriodicTable
-          ariaLabel="周期表"
+          ariaLabel={t("subst.pt.aria")}
           cell={(el) => ptCell(el, ptMode === "pick" ? "pick" : "compare")}
           selected={ptMode === "pick" ? cEl : ptEl}
           marked={a.host.el}
@@ -420,118 +399,119 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
         {ptMode === "compare" && ptEl && (
           <ElementIons el={ptEl} rows={results.filter((r) => r.el === ptEl)} inFilter={filteredKeys} onOpen={openDetail} />
         )}
-        {ptMode === "compare" && !ptEl && <p className="muted small">元素をクリックすると、その元素のイオンごとの値を表示します。</p>}
+        {ptMode === "compare" && !ptEl && <p className="muted small">{t("subst.pt.clickHint")}</p>}
       </Modal>
     </div>
   );
 }
 
 function ScoreBar({ r }: { r: CandidateResult }) {
+  const t = useT();
   return (
     <div className={`score v-${r.verdict}`}>
       <div className="score-track">
         <div className="score-fill" style={{ width: `${Math.max(2, r.score)}%` }} />
       </div>
       <span className="score-num mono">{r.score.toFixed(0)}</span>
-      <span className="pill">{VERDICT_LABEL[r.verdict]}</span>
+      <span className="pill">{t(`verdict.${r.verdict}`)}</span>
     </div>
   );
 }
 
 function DetailCard({ a, r, onClose }: { a: SiteAnalysis; r: CandidateResult; onClose: () => void }) {
+  const t = useT();
   const pr = paulingRange(a.cn);
   const ratio = r.dPred !== null ? r.dPred / a.dMean - 1 : null;
   return (
     <section className={`card detail v-${r.verdict}`} aria-live="polite">
       <div className="card-head">
         <h2>
-          {ionLabel(r.el, r.ox, r.spin || undefined)} → {a.group}（{ionLabel(a.host.el, a.host.ox)}）
+          {ionLabel(r.el, r.ox, r.spin || undefined)} → {a.group} ({ionLabel(a.host.el, a.host.ox)})
         </h2>
         <button className="btn btn-ghost btn-small" onClick={onClose}>
-          閉じる
+          {t("common.close")}
         </button>
       </div>
       <div className="detail-verdict">
-        <span className="pill pill-big">{VERDICT_LABEL[r.verdict]}</span>
+        <span className="pill pill-big">{t(`verdict.${r.verdict}`)}</span>
         <span className="detail-score mono">{r.score.toFixed(0)}</span>
         <span className="muted small">/ 100</span>
       </div>
       <dl className="metrics">
         <div>
           <dt>
-            シャノン半径 r<sub>M</sub>（CN {roman(a.cn)}）
+            {t("subst.d.rM")} r<sub>M</sub> (CN {roman(a.cn)})
           </dt>
           <dd className="mono">
-            {r.radius.r.toFixed(3)} Å {!r.radius.exact && <span className="approx-note">{r.radius.note}</span>}
+            {r.radius.r.toFixed(3)} Å {!r.radius.exact && <span className="approx-note">{radiusNote(t, r.radius)}</span>}
           </dd>
         </div>
         <div>
-          <dt>サイト空間半径に対する差 Δr</dt>
+          <dt>{t("subst.d.dSite")} Δr</dt>
           <dd className="mono">
-            {pct(r.dSite)} <span className="muted">（S {r.sSize.toFixed(2)}）</span>
+            {pct(r.dSite)} <span className="muted">(S {r.sSize.toFixed(2)})</span>
           </dd>
         </div>
         <div>
-          <dt>ホストイオン半径に対する差</dt>
+          <dt>{t("subst.d.dHost")}</dt>
           <dd className="mono">{pct(r.dHost)}</dd>
         </div>
         <div>
-          <dt>予想平均結合長 r<sub>M</sub> + ⟨r<sub>X</sub>⟩ / 実測</dt>
+          <dt>{t("subst.d.dPred")} r<sub>M</sub> + ⟨r<sub>X</sub>⟩ / {t("subst.observed")}</dt>
           <dd className="mono">
             {fmt(r.dPred, 3)} / {a.dMean.toFixed(3)} Å <span className="muted">({pct(ratio)})</span>
           </dd>
         </div>
         <div>
-          <dt>このサイトでの BVS / 形式価数</dt>
+          <dt>{t("subst.d.bvs")}</dt>
           <dd className="mono">
-            {r.bvs !== null ? `${r.bvs.toFixed(2)} / ${Math.abs(r.ox)}` : "パラメータなし"}
-            {r.sBVS !== null && <span className="muted">（S {r.sBVS.toFixed(2)}）</span>}
+            {r.bvs !== null ? `${r.bvs.toFixed(2)} / ${Math.abs(r.ox)}` : t("subst.d.noParam")}
+            {r.sBVS !== null && <span className="muted">(S {r.sBVS.toFixed(2)})</span>}
           </dd>
         </div>
         <div>
-          <dt>価数差 Δq</dt>
+          <dt>{t("subst.d.dq")} Δq</dt>
           <dd className="mono">
-            {signed(r.dq)} <span className="muted">（S {r.sCharge.toFixed(2)}）</span>
+            {signed(r.dq)} <span className="muted">(S {r.sCharge.toFixed(2)})</span>
           </dd>
         </div>
         <div>
-          <dt>半径比 r<sub>M</sub>/r<sub>X</sub>（Pauling）</dt>
+          <dt>{t("subst.d.rho")} r<sub>M</sub>/r<sub>X</sub> (Pauling)</dt>
           <dd className="mono">
             {fmt(r.rho, 3)}
             {pr && (
               <span className={r.rhoOk ? "ok-note" : "warn-note"}>
                 {" "}
-                CN {a.cn} の安定範囲 {pr[0].toFixed(3)}–{Number.isFinite(pr[1]) ? pr[1].toFixed(3) : "∞"} {r.rhoOk ? "内" : "外"}
+                {t(r.rhoOk ? "subst.d.rhoIn" : "subst.d.rhoOut", { cn: a.cn, lo: pr[0].toFixed(3), hi: Number.isFinite(pr[1]) ? pr[1].toFixed(3) : "∞" })}
               </span>
             )}
           </dd>
         </div>
       </dl>
-      <p className="note small">{commentFor(a, r)}</p>
+      <p className="note small">{commentFor(t, a, r)}</p>
     </section>
   );
 }
 
-function commentFor(a: SiteAnalysis, r: CandidateResult): string {
+function commentFor(t: TFn, a: SiteAnalysis, r: CandidateResult): string {
   const parts: string[] = [];
   const d = r.dSite ?? r.dHost;
   if (d !== null) {
     const ad = Math.abs(d);
-    if (ad < 0.05) parts.push("サイズはほぼ一致します。");
-    else if (ad < 0.15) parts.push(d > 0 ? "やや大きく、局所的に結合が伸びる方向の歪みが入ります。" : "やや小さく、多面体が縮むかオフセンターになりやすくなります。");
-    else if (ad < 0.3) parts.push(d > 0 ? "かなり大きく、固溶量は限られそうです。" : "かなり小さく、別のサイトや低配位を好む可能性があります。");
-    else parts.push("サイズの差が大きく、このサイトへの置換は起こりにくいと考えられます。");
+    if (ad < 0.05) parts.push(t("cmt.sizeMatch"));
+    else if (ad < 0.15) parts.push(t(d > 0 ? "cmt.slightBig" : "cmt.slightSmall"));
+    else if (ad < 0.3) parts.push(t(d > 0 ? "cmt.big" : "cmt.small"));
+    else parts.push(t("cmt.tooDifferent"));
   }
   if (r.bvsRatio !== null) {
-    if (r.bvsRatio > 1.2) parts.push("BVS が形式価数を大きく上回り、結合が混み合う（過剰結合）状態です。");
-    else if (r.bvsRatio < 0.8) parts.push("BVS が形式価数を下回り、サイトが緩すぎる（結合不足）状態です。");
+    if (r.bvsRatio > 1.2) parts.push(t("cmt.overbonded"));
+    else if (r.bvsRatio < 0.8) parts.push(t("cmt.underbonded"));
   }
   if (r.dq !== 0) {
-    const need = r.dq > 0 ? "陽イオン空孔、低価数イオンとの共ドープ、または周囲の還元" : "陰イオン空孔、高価数イオンとの共ドープ、または周囲の酸化";
-    parts.push(`価数が ${signed(r.dq)} 異なるため、${need}などによる電荷補償が必要です。`);
+    parts.push(t(r.dq > 0 ? "cmt.chargeUp" : "cmt.chargeDown", { dq: signed(r.dq) }));
   }
-  if (r.el === a.host.el && r.ox === a.host.ox) parts.push("（ホストイオン自身の値で、評価の基準になります。）");
-  return parts.join("");
+  if (r.el === a.host.el && r.ox === a.host.ox) parts.push(t("cmt.host"));
+  return parts.join(t("cmt.sep"));
 }
 
 function RadiusMap({
@@ -547,8 +527,9 @@ function RadiusMap({
   selectedKey: string | null;
   onSelect: (r: CandidateResult) => void;
 }) {
+  const t = useT();
   const ref = a.rSite ?? a.rHost?.r ?? null;
-  if (ref === null) return <p className="muted small">基準となる半径がありません。</p>;
+  if (ref === null) return <p className="muted small">{t("subst.noRef")}</p>;
   const lo = Math.max(0, ref * (1 - 3 * tol) - 0.05),
     hi = ref * (1 + 3 * tol) + 0.05;
   const charges = [...new Set(results.map((r) => r.ox))].sort((x, y) => Math.abs(x) - Math.abs(y));
@@ -573,7 +554,7 @@ function RadiusMap({
 
   return (
     <div className="table-wrap">
-      <svg viewBox={`0 0 ${W} ${H}`} className="rmap" role="img" aria-label="候補イオンのシャノン半径">
+      <svg viewBox={`0 0 ${W} ${H}`} className="rmap" role="img" aria-label={t("subst.mapAria")}>
         <rect x={X(ref * (1 - 2 * tol))} y={top - 8} width={X(ref * (1 + 2 * tol)) - X(ref * (1 - 2 * tol))} height={charges.length * rowH + 8} className="rmap-band2" />
         <rect x={X(ref * (1 - tol))} y={top - 8} width={X(ref * (1 + tol)) - X(ref * (1 - tol))} height={charges.length * rowH + 8} className="rmap-band1" />
         <line x1={X(ref)} x2={X(ref)} y1={top - 14} y2={top + charges.length * rowH} className="rmap-ref" />
@@ -605,7 +586,7 @@ function RadiusMap({
                       </text>
                     )}
                     <title>
-                      {ionLabel(r.el, r.ox, r.spin || undefined)} {r.radius.r.toFixed(3)} Å · スコア {r.score.toFixed(0)}
+                      {ionLabel(r.el, r.ox, r.spin || undefined)} {r.radius.r.toFixed(3)} Å · {t("col.score")} {r.score.toFixed(0)}
                     </title>
                   </g>
                 );
@@ -630,21 +611,22 @@ function RadiusMap({
 }
 
 function ElementIons({ el, rows, inFilter, onOpen }: { el: string; rows: CandidateResult[]; inFilter: Set<string>; onOpen: (c: Candidate) => void }) {
+  const t = useT();
   const sorted = [...rows].sort((x, y) => y.score - x.score);
-  if (!sorted.length) return <p className="muted small">{el} にはこのサイトと同じ符号の価数のイオンがシャノン表にありません。</p>;
+  if (!sorted.length) return <p className="muted small">{t("subst.pt.noIons", { el })}</p>;
   return (
     <div className="pt-ions">
-      <h3>{el} のイオン</h3>
+      <h3>{t("subst.pt.ionsOf", { el })}</h3>
       <div className="table-wrap">
         <table className="data ranking">
           <thead>
             <tr>
-              <th>イオン</th>
+              <th>{t("col.ion")}</th>
               <th className="num">r (Å)</th>
               <th className="num">Δr</th>
               <th className="num">BVS</th>
               <th className="num">Δq</th>
-              <th>スコア</th>
+              <th>{t("col.score")}</th>
               <th />
             </tr>
           </thead>
@@ -655,9 +637,9 @@ function ElementIons({ el, rows, inFilter, onOpen }: { el: string; rows: Candida
                 <tr key={r.key} className={ok ? "" : "is-out"}>
                   <td>
                     <strong>{ionLabel(r.el, r.ox, r.spin || undefined)}</strong>
-                    {!ok && <span className="tag tag-quiet">条件外</span>}
+                    {!ok && <span className="tag tag-quiet">{t("subst.outside")}</span>}
                   </td>
-                  <td className="num mono" title={r.radius.note}>
+                  <td className="num mono" title={radiusNote(t, r.radius)}>
                     {r.radius.r.toFixed(3)}
                     {r.radius.method !== "exact" && <sup className="approx">{r.radius.method === "interp" ? "i" : "*"}</sup>}
                   </td>
@@ -669,7 +651,7 @@ function ElementIons({ el, rows, inFilter, onOpen }: { el: string; rows: Candida
                   </td>
                   <td>
                     <button className="btn btn-small" onClick={() => onOpen(r)}>
-                      詳細
+                      {t("subst.details")}
                     </button>
                   </td>
                 </tr>
@@ -679,5 +661,57 @@ function ElementIons({ el, rows, inFilter, onOpen }: { el: string; rows: Candida
         </table>
       </div>
     </div>
+  );
+}
+
+function MethodText({ lang }: { lang: Lang }) {
+  if (lang === "en")
+    return (
+      <>
+      <ol className="method-list">
+        <li>
+          <strong>Site cavity radius.</strong> For each bond, the Shannon radius of the ligand r<sub>X,i</sub> (at the ligand's own coordination number) is subtracted from the observed distance d<sub>i</sub>; the mean r<sub>site</sub> = ⟨d<sub>i</sub> − r<sub>X,i</sub>⟩ is taken as the radius of a cation that fits the site.
+        </li>
+        <li>
+          <strong>Size match.</strong> From the mismatch Δr = (r<sub>M</sub> − r<sub>site</sub>)/r<sub>site</sub> with the candidate radius r<sub>M</sub> (Shannon radius at the same CN), S<sub>size</sub> = exp(−½(Δr/σ)²). σ is the tolerance (15% by default, in line with the Goldschmidt and Hume-Rothery rules of thumb).
+        </li>
+        <li>
+          <strong>Bond-valence sum (BVS).</strong> With the candidate placed at the observed bond lengths, V = Σ exp((R<sub>0</sub> − d<sub>i</sub>)/0.37) is computed with the Brese &amp; O'Keeffe (1991) parameters, and S<sub>BVS</sub> = exp(−½((V/|q| − 1)/0.25)²) from its ratio to the formal charge. This captures size differences between charge states.
+        </li>
+        <li>
+          <strong>Charge difference.</strong> 1 for Δq = 0, 0.75 for ±1, 0.5 for ±2 and 0.3 beyond. Aliovalent substitution needs charge compensation by vacancies, co-doping or valence changes.
+        </li>
+        <li>
+          <strong>Overall score.</strong> Weighted geometric mean (size 0.6, BVS 0.25, charge 0.15) × 100. 75 or more “likely”, 50 or more “possible”, 25 or more “conditional”, below that “unlikely”.
+        </li>
+      </ol>
+      <p className="muted small">
+        This is a geometric guide only. Crystal-field stabilisation, covalency, site preference, synthesis temperature and atmosphere, and secondary phases are not considered. Shannon radii were derived mainly from oxides and fluorides.
+      </p>
+      </>
+    );
+  return (
+    <>
+        <ol className="method-list">
+        <li>
+          <strong>サイトの空間半径.</strong> 各結合について実測距離 d<sub>i</sub> から配位子のシャノン半径 r<sub>X,i</sub>（配位子自身の配位数での値）を引き、平均した r<sub>site</sub> = ⟨d<sub>i</sub> − r<sub>X,i</sub>⟩ をサイトに収まる陽イオンの半径とみなします。
+        </li>
+        <li>
+          <strong>サイズの一致.</strong> 候補イオンの半径 r<sub>M</sub>（同じ配位数でのシャノン半径）との差 Δr = (r<sub>M</sub> − r<sub>site</sub>)/r<sub>site</sub> から、S<sub>size</sub> = exp(−½(Δr/σ)²) を計算します。σ は許容幅（既定 15%、Goldschmidt や Hume-Rothery の経験則に相当）。
+        </li>
+        <li>
+          <strong>結合原子価和 (BVS).</strong> 実際の結合距離のまま候補イオンを置いたときの V = Σ exp((R<sub>0</sub> − d<sub>i</sub>)/0.37) を Brese &amp; O'Keeffe (1991) のパラメータで求め、形式価数との比から S<sub>BVS</sub> = exp(−½((V/|q| − 1)/0.25)²)。価数ごとの大きさの違いを反映します。
+        </li>
+        <li>
+          <strong>価数差.</strong> Δq = 0 で 1、±1 で 0.75、±2 で 0.5、それ以上で 0.3。異価数置換では空孔・共ドープ・価数変化などの電荷補償が必要になります。
+        </li>
+        <li>
+          <strong>総合スコア.</strong> 重み付き幾何平均（サイズ 0.6、BVS 0.25、価数 0.15）× 100。75 以上「入りやすい」、50 以上「可能性あり」、25 以上「条件次第」、それ未満「困難」。
+        </li>
+      </ol>
+      <p className="muted small">
+        幾何学的な目安です。結晶場安定化エネルギー、共有結合性、サイト選択性、合成温度や雰囲気、第二相の生成などは考慮していません。シャノン半径は主に酸化物・フッ化物から求められた値です。
+      </p>
+    </>
   );
 }

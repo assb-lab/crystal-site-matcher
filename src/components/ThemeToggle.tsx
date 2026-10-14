@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import type { ThemePref } from "../lib/theme";
+import { useT, type MsgKey } from "../i18n";
 
-const OPTIONS: { value: ThemePref; label: string; icon: ReactNode }[] = [
+const OPTIONS: { value: ThemePref; label: MsgKey; icon: ReactNode }[] = [
   {
     value: "system",
-    label: "システム設定に合わせる",
+    label: "theme.system",
     icon: (
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
         <rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -14,7 +15,7 @@ const OPTIONS: { value: ThemePref; label: string; icon: ReactNode }[] = [
   },
   {
     value: "light",
-    label: "ライト",
+    label: "theme.light",
     icon: (
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
         <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -29,7 +30,7 @@ const OPTIONS: { value: ThemePref; label: string; icon: ReactNode }[] = [
   },
   {
     value: "dark",
-    label: "ダーク",
+    label: "theme.dark",
     icon: (
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
         <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
@@ -39,15 +40,16 @@ const OPTIONS: { value: ThemePref; label: string; icon: ReactNode }[] = [
 ];
 
 export default function ThemeToggle({ value, onChange }: { value: ThemePref; onChange: (v: ThemePref) => void }) {
+  const t = useT();
   return (
-    <div className="theme-toggle" role="radiogroup" aria-label="表示テーマ">
+    <div className="theme-toggle" role="radiogroup" aria-label={t("theme.group")}>
       {OPTIONS.map((o) => (
         <button
           key={o.value}
           role="radio"
           aria-checked={value === o.value}
-          aria-label={o.label}
-          title={o.label}
+          aria-label={t(o.label)}
+          title={t(o.label)}
           className={value === o.value ? "is-on" : ""}
           onClick={() => onChange(o.value)}
           id={`theme-${o.value}`}

@@ -4,6 +4,7 @@ import type { Crystal, Vec3 } from "../lib/structure";
 import type { ViewDir } from "./Viewer";
 import { elementColor } from "../lib/data";
 import { rgbCss } from "../lib/format";
+import { useT } from "../i18n";
 
 interface Props {
   view: ViewOptions;
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function ViewControls({ view, setView, onViewDir, crystal, ox }: Props) {
+  const t = useT();
   const els = [...new Set(crystal.sites.map((s) => s.element))];
   const cationEls = [...new Set(crystal.sites.filter((s) => (ox[s.label] ?? 0) > 0).map((s) => s.element))];
   const set = <K extends keyof ViewOptions>(k: K, v: ViewOptions[K]) => setView((o) => ({ ...o, [k]: v }));
@@ -22,27 +24,27 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox }: 
 
   return (
     <>
-      <div className="viewdirs" role="group" aria-label="視点">
+      <div className="viewdirs" role="group" aria-label={t("view.group")}>
         {(["a", "b", "c"] as ViewDir[]).map((d) => (
-          <button key={d} className="chip" onClick={() => onViewDir(d)} title={`${d} 軸方向から見る`} id={`view-${d}`}>
+          <button key={d} className="chip" onClick={() => onViewDir(d)} title={t("view.along", { axis: d })} id={`view-${d}`}>
             {d}
           </button>
         ))}
         {(["a*", "b*", "c*"] as ViewDir[]).map((d) => (
-          <button key={d} className="chip" onClick={() => onViewDir(d)} title={`逆格子 ${d} 方向から見る`} id={`view-${d.replace("*", "s")}`}>
+          <button key={d} className="chip" onClick={() => onViewDir(d)} title={t("view.alongRecip", { axis: d })} id={`view-${d.replace("*", "s")}`}>
             {d}
           </button>
         ))}
-        <button className="chip" onClick={() => onViewDir("reset")} title="初期の視点に戻す" id="view-reset">
-          リセット
+        <button className="chip" onClick={() => onViewDir("reset")} title={t("view.resetTitle")} id="view-reset">
+          {t("view.reset")}
         </button>
       </div>
 
       <details className="viewmenu">
-        <summary className="chip">表示設定</summary>
+        <summary className="chip">{t("view.menu")}</summary>
         <div className="viewmenu-body">
           <fieldset>
-            <legend>表示範囲（単位胞の数）</legend>
+            <legend>{t("view.range")}</legend>
             <div className="row gap-s">
               {(["a", "b", "c"] as const).map((ax, i) => (
                 <label key={ax} className="field-inline" htmlFor={`sc-${ax}`}>
@@ -68,13 +70,13 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox }: 
           </fieldset>
 
           <fieldset>
-            <legend>多面体</legend>
+            <legend>{t("view.poly")}</legend>
             <div className="seg" role="radiogroup">
               {(
                 [
-                  ["elements", "元素ごと"],
-                  ["selected", "選択サイトのみ"],
-                  ["none", "なし"],
+                  ["elements", t("view.poly.elements")],
+                  ["selected", t("view.poly.selected")],
+                  ["none", t("view.poly.none")],
                 ] as [PolyMode, string][]
               ).map(([k, l]) => (
                 <button key={k} role="radio" aria-checked={view.polyMode === k} className={view.polyMode === k ? "is-on" : ""} onClick={() => set("polyMode", k)}>
@@ -93,33 +95,33 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox }: 
               </div>
             )}
             <label className="slider" htmlFor="poly-op">
-              <span>不透明度</span>
+              <span>{t("view.opacity")}</span>
               <input id="poly-op" type="range" min={0.1} max={0.9} step={0.05} value={view.polyOpacity} onChange={(e) => set("polyOpacity", +e.target.value)} />
             </label>
           </fieldset>
 
           <fieldset>
-            <legend>原子と結合</legend>
+            <legend>{t("view.atoms")}</legend>
             <div className="checks">
               <label htmlFor="show-bonds">
-                <input id="show-bonds" type="checkbox" checked={view.showBonds} onChange={(e) => set("showBonds", e.target.checked)} /> 結合
+                <input id="show-bonds" type="checkbox" checked={view.showBonds} onChange={(e) => set("showBonds", e.target.checked)} /> {t("view.bonds")}
               </label>
               <label htmlFor="show-cell">
-                <input id="show-cell" type="checkbox" checked={view.showCell} onChange={(e) => set("showCell", e.target.checked)} /> 単位胞
+                <input id="show-cell" type="checkbox" checked={view.showCell} onChange={(e) => set("showCell", e.target.checked)} /> {t("view.cell")}
               </label>
               <label htmlFor="show-labels">
-                <input id="show-labels" type="checkbox" checked={view.showLabels} onChange={(e) => set("showLabels", e.target.checked)} /> 結合距離ラベル
+                <input id="show-labels" type="checkbox" checked={view.showLabels} onChange={(e) => set("showLabels", e.target.checked)} /> {t("view.labels")}
               </label>
             </div>
             <label className="slider" htmlFor="atom-scale">
-              <span>原子サイズ</span>
+              <span>{t("view.atomSize")}</span>
               <input id="atom-scale" type="range" min={0.1} max={1} step={0.05} value={view.atomScale} onChange={(e) => set("atomScale", +e.target.value)} />
             </label>
             <label className="slider" htmlFor="bond-r">
-              <span>結合の太さ</span>
+              <span>{t("view.bondWidth")}</span>
               <input id="bond-r" type="range" min={0.03} max={0.25} step={0.01} value={view.bondRadius} onChange={(e) => set("bondRadius", +e.target.value)} />
             </label>
-            <div className="sub-legend">非表示にする元素</div>
+            <div className="sub-legend">{t("view.hide")}</div>
             <div className="chips">
               {els.map((el) => {
                 const hidden = view.hiddenElements.includes(el);

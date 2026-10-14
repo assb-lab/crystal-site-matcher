@@ -1,6 +1,7 @@
 import { CifBlock, cifNumber, getItem, getLoop } from "./cif";
 import { ELEMENTS } from "./data";
 import { lookupSpaceGroup, parseSymOp, SymOp } from "./spacegroup";
+import { Msg, MsgError, msg } from "./messages";
 
 export type Vec3 = [number, number, number];
 
@@ -50,15 +51,21 @@ export interface SiteGroup {
   positions: number[];
 }
 
+/** Where the symmetry operators came from. */
+export interface SgSource {
+  kind: "cif" | "symbol" | "none";
+  setting?: string;
+}
+
 export interface Crystal {
   title: string;
   lattice: Lattice;
-  spaceGroup: { symbol: string; number: number | null; source: string };
+  spaceGroup: { symbol: string; number: number | null; source: SgSource };
   nOps: number;
   sites: AsymSite[];
   positions: Position[];
   groups: SiteGroup[];
-  warnings: string[];
+  warnings: Msg[];
 }
 
 const d2r = Math.PI / 180;
@@ -154,7 +161,7 @@ export function parseTypeSymbol(sym: string): { element: string | null; charge: 
 }
 
 export function crystalFromCif(block: CifBlock): Crystal {
-  const warnings: string[] = [];
+  const warnings: Msg[] = [];
   const num = (...tags: string[]) => cifNumber(getItem(block, ...tags));
   const a = num("_cell_length_a"),
     b = num("_cell_length_b"),
@@ -162,7 +169,7 @@ export function crystalFromCif(block: CifBlock): Crystal {
   const alpha = num("_cell_angle_alpha") || 90,
     beta = num("_cell_angle_beta") || 90,
     gamma = num("_cell_angle_gamma") || 90;
-  if (!(a > 0 && b > 0 && c > 0)) throw new Error("格子定数 (_cell_length_a/b/c) が見つかりません。");
+  if (!(a > 0 && b > 0 && c > 0)) throw new MsgError("err.noCell");
   const lattice = makeLattice(a, b, c, alpha, beta, gamma);
 
   // ---- symmetry ----
@@ -172,7 +179,7 @@ export function crystalFromCif(block: CifBlock): Crystal {
   const itn = cifNumber(getItem(block, "_symmetry_Int_Tables_number", "_space_group_IT_number"));
   let sgSymbol = hm ?? "";
   let sgNumber: number | null = Number.isFinite(itn) ? itn : null;
-  let source = "CIF 内の対称操作";
+  let source: SgSource = { kind: "cif" };
   const symLoop = getLoop(block, "_space_group_symop_operation_xyz", "_symmetry_equiv_pos_as_xyz");
   if (symLoop) {
     const col = Math.max(symLoop.col("_space_group_symop_operation_xyz"), symLoop.col("_symmetry_equiv_pos_as_xyz"));
@@ -180,7 +187,7 @@ export function crystalFromCif(block: CifBlock): Crystal {
       try {
         ops.push(parseSymOp(row[col]));
       } catch (e) {
-        warnings.push((e as Error).message);
+        warnings.push(e instanceof MsgError ? e.msg : msg("warn.symop", { text: row[col] }));
       }
     }
   } else {
@@ -193,11 +200,11 @@ export function crystalFromCif(block: CifBlock): Crystal {
       ops = m.ops;
       sgSymbol = m.symbol;
       sgNumber = m.number;
-      source = `空間群記号から生成 (${m.setting})`;
+      source = { kind: "symbol", setting: m.setting };
     } else if (ops.length === 0) {
       ops = [parseSymOp("x,y,z")];
-      source = "対称情報なし（P1 として扱います）";
-      warnings.push("対称操作も空間群記号も見つからないため P1 として展開しました。");
+      source = { kind: "none" };
+      warnings.push(msg("warn.noSymmetry"));
     }
   }
   if (!sgSymbol && sgNumber) sgSymbol = `#${sgNumber}`;
@@ -217,7 +224,7 @@ export function crystalFromCif(block: CifBlock): Crystal {
 
   // ---- atom sites ----
   const asl = getLoop(block, "_atom_site_fract_x");
-  if (!asl) throw new Error("原子座標 (_atom_site_fract_x) が見つかりません。");
+  if (!asl) throw new MsgError("err.noAtomSites");
   const col = asl.col;
   const cLabel = col("_atom_site_label"),
     cType = col("_atom_site_type_symbol"),
@@ -234,7 +241,7 @@ export function crystalFromCif(block: CifBlock): Crystal {
     let { element, charge } = parseTypeSymbol(typeSymbol);
     if (!element) element = parseTypeSymbol(label).element;
     if (!element) {
-      warnings.push(`元素を判別できないサイト ${label} を除外しました。`);
+      warnings.push(msg("warn.unknownElement", { label }));
       continue;
     }
     let cifOx: number | null = typeOx.has(typeSymbol) ? typeOx.get(typeSymbol)! : null;
@@ -242,12 +249,12 @@ export function crystalFromCif(block: CifBlock): Crystal {
     const occRaw = cOcc >= 0 ? cifNumber(row[cOcc]) : 1;
     const frac: Vec3 = [cifNumber(row[cx]), cifNumber(row[cy]), cifNumber(row[cz])];
     if (frac.some((v) => !Number.isFinite(v))) {
-      warnings.push(`サイト ${label} の座標が読めません。`);
+      warnings.push(msg("warn.badCoords", { label }));
       continue;
     }
     sites.push({ index: sites.length, label, element, typeSymbol, cifOx, occ: Number.isFinite(occRaw) ? occRaw : 1, frac, multiplicity: 0 });
   }
-  if (sites.length === 0) throw new Error("原子サイトがありません。");
+  if (sites.length === 0) throw new MsgError("err.noSites");
 
   // ---- expand by symmetry ----
   const TOL = 0.05; // Å
@@ -295,7 +302,7 @@ export function crystalFromCif(block: CifBlock): Crystal {
     g.positions.push(p.index);
   }
   const groups = [...groupMap.values()].sort((x, y) => x.sites[0] - y.sites[0]);
-  if (positions.length > 4000) warnings.push(`単位胞内の原子数が多い (${positions.length}) ため動作が重くなる可能性があります。`);
+  if (positions.length > 4000) warnings.push(msg("warn.manyAtoms", { n: positions.length }));
 
   const title = getItem(block, "_chemical_name_mineral", "_chemical_name_common", "_chemical_name_systematic") ?? getItem(block, "_chemical_formula_sum") ?? block.name;
 

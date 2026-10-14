@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import type { Doc } from "../lib/doc";
 import type { FeatureEntry } from "../lib/useFeatures";
-import { FEATURE_DEFS, FEATURE_BY_KEY, FeatureGroup, GROUP_LABEL } from "../lib/features";
+import { FEATURE_DEFS, FEATURE_BY_KEY, FeatureGroup, GROUPS } from "../lib/features";
 import { BarChart, LineChart, ScatterChart, seriesColor } from "./charts";
-import { fmtFeature } from "./FeaturesPanel";
+import { featDesc, featLabel, fmtFeature, groupLabel } from "./FeaturesPanel";
+import { translate, useT, type MsgKey, type TFn } from "../i18n";
+
+/** CSV is always written in English so files are comparable across UI languages. */
+const tEn: TFn = (k, p) => translate("en", k, p);
 
 interface Props {
   docs: Doc[]; // the ones included in the comparison
@@ -15,7 +19,7 @@ interface Props {
 
 type Curve = "prdf" | "xrd" | "bvse" | "void";
 
-const GENERIC: Record<string, string> = { MX: "可動イオン–陰イオン", MM: "可動イオン–可動イオン", XX: "陰イオン–陰イオン" };
+const GENERIC: Record<string, MsgKey> = { MX: "cmp.pair.MX", MM: "cmp.pair.MM", XX: "cmp.pair.XX" };
 
 /** The element pair of a structure that plays the given role (mobile ion / anion). */
 function genericPair(d: Doc, e: FeatureEntry, kind: string) {
@@ -31,6 +35,7 @@ function genericPair(d: Doc, e: FeatureEntry, kind: string) {
 const NUMERIC = FEATURE_DEFS.filter((d) => !d.text);
 
 export default function CompareView({ docs, allCount, entries, errors, onOpenDoc }: Props) {
+  const t = useT();
   const [barKey, setBarKey] = useState("E_1D");
   const [xKey, setXKey] = useState("V_anion");
   const [yKey, setYKey] = useState("E_1D");
@@ -67,10 +72,10 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
   });
 
   const csv = () => {
-    const head = ["feature", "unit", ...docs.map((d) => d.name)];
-    const rows = FEATURE_DEFS.map((f) => [f.label, f.unit ?? "", ...docs.map((d) => {
+    const head = ["key", "feature", "unit", ...docs.map((d) => d.name)];
+    const rows = FEATURE_DEFS.map((f) => [f.key, featLabel(tEn, f.key), f.unit ?? "", ...docs.map((d) => {
       const v = val(d, f.key);
-      return v === null ? "" : typeof v === "number" ? String(+v.toPrecision(8)) : v;
+      return v === null ? "" : typeof v === "number" ? String(+v.toPrecision(8)) : fmtFeature(tEn, f, v);
     })]);
     return [head, ...rows].map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n");
   };
@@ -95,7 +100,7 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
   if (docs.length === 0)
     return (
       <main className="compare">
-        <p className="muted">比較する構造を左の一覧でチェックしてください（{allCount} 件中 0 件）。</p>
+        <p className="muted">{t("cmp.none", { all: allCount })}</p>
       </main>
     );
 
@@ -103,19 +108,19 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
     <main className="compare">
       <div className="compare-head">
         <div>
-          <h2>構造の比較</h2>
+          <h2>{t("cmp.title")}</h2>
           <p className="muted small">
-            {docs.length} 構造{allCount > docs.length ? `（${allCount} 件中）` : ""}。左の一覧のチェックで対象を切り替えます。
-            {pending > 0 && ` 特徴量を計算中 ${docs.length - pending}/${docs.length}…`}
-            {pending === 0 && gridRunning > 0 && ` BVSE グリッド計算中（残り ${gridRunning}）…`}
+            {t(allCount > docs.length ? "cmp.countOf" : "cmp.count", { n: docs.length, all: allCount })} {t("cmp.hint")}
+            {pending > 0 && ` ${t("cmp.pending", { done: docs.length - pending, n: docs.length })}`}
+            {pending === 0 && gridRunning > 0 && ` ${t("cmp.gridRunning", { n: gridRunning })}`}
           </p>
         </div>
         <div className="row gap-s">
           <button className="btn" onClick={copyCsv} id="copy-csv">
-            {copied ? "コピーしました" : "CSV をコピー"}
+            {t(copied ? "cmp.copied" : "cmp.copyCsv")}
           </button>
           <button className="btn" onClick={saveCsv} id="save-csv">
-            CSV を保存
+            {t("cmp.saveCsv")}
           </button>
         </div>
       </div>
@@ -123,16 +128,16 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
       <div className="compare-grid">
         <section className="card">
           <div className="card-head">
-            <h2>特徴量を比べる</h2>
-            <select value={barKey} onChange={(e) => setBarKey(e.target.value)} aria-label="特徴量" id="bar-key">
+            <h2>{t("cmp.bar")}</h2>
+            <select value={barKey} onChange={(e) => setBarKey(e.target.value)} aria-label={t("tsv.feature")} id="bar-key">
               {NUMERIC.map((f) => (
                 <option key={f.key} value={f.key}>
-                  {GROUP_LABEL[f.group]} · {f.label}
+                  {groupLabel(t, f.group)} · {featLabel(t, f.key)}
                 </option>
               ))}
             </select>
           </div>
-          <p className="muted small">{FEATURE_BY_KEY[barKey]?.desc}</p>
+          <p className="muted small">{featDesc(t, barKey)}</p>
           <BarChart
             items={docs.map((d) => {
               const v = val(d, barKey);
@@ -145,14 +150,14 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
 
         <section className="card">
           <div className="card-head">
-            <h2>2 つの特徴量の関係</h2>
+            <h2>{t("cmp.scatter")}</h2>
             <div className="row gap-s wrap">
               <label className="field-inline" htmlFor="x-key">
                 <span>X</span>
                 <select id="x-key" value={xKey} onChange={(e) => setXKey(e.target.value)}>
                   {NUMERIC.map((f) => (
                     <option key={f.key} value={f.key}>
-                      {f.label}
+                      {featLabel(t, f.key)}
                     </option>
                   ))}
                 </select>
@@ -162,7 +167,7 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
                 <select id="y-key" value={yKey} onChange={(e) => setYKey(e.target.value)}>
                   {NUMERIC.map((f) => (
                     <option key={f.key} value={f.key}>
-                      {f.label}
+                      {featLabel(t, f.key)}
                     </option>
                   ))}
                 </select>
@@ -175,8 +180,8 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
                 y = val(d, yKey);
               return typeof x === "number" && typeof y === "number" ? [{ id: d.id, x, y, label: d.name, color: seriesColor(d.colorSlot) }] : [];
             })}
-            xLabel={`${FEATURE_BY_KEY[xKey]?.label}${FEATURE_BY_KEY[xKey]?.unit ? ` (${FEATURE_BY_KEY[xKey].unit})` : ""}`}
-            yLabel={`${FEATURE_BY_KEY[yKey]?.label}${FEATURE_BY_KEY[yKey]?.unit ? ` (${FEATURE_BY_KEY[yKey].unit})` : ""}`}
+            xLabel={`${featLabel(t, xKey)}${FEATURE_BY_KEY[xKey]?.unit ? ` (${FEATURE_BY_KEY[xKey].unit})` : ""}`}
+            yLabel={`${featLabel(t, yKey)}${FEATURE_BY_KEY[yKey]?.unit ? ` (${FEATURE_BY_KEY[yKey].unit})` : ""}`}
             xFmt={(v) => v.toFixed(FEATURE_BY_KEY[xKey]?.digits ?? 3)}
             yFmt={(v) => v.toFixed(FEATURE_BY_KEY[yKey]?.digits ?? 3)}
           />
@@ -184,14 +189,14 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
 
         <section className="card span-2">
           <div className="card-head">
-            <h2>曲線を重ねる</h2>
+            <h2>{t("cmp.curves")}</h2>
             <div className="row gap-s wrap">
-              <div className="seg small" role="radiogroup" aria-label="曲線">
+              <div className="seg small" role="radiogroup" aria-label={t("cmp.curve")}>
                 {(
                   [
-                    ["bvse", "BVSE 体積分率"],
-                    ["void", "空隙 体積分率"],
-                    ["prdf", "部分 g(r)"],
+                    ["bvse", t("cmp.curve.bvse")],
+                    ["void", t("cmp.curve.void")],
+                    ["prdf", t("cmp.curve.prdf")],
                     ["xrd", "XRD"],
                   ] as [Curve, string][]
                 ).map(([k, l]) => (
@@ -201,15 +206,15 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
                 ))}
               </div>
               {curve === "prdf" && (
-                <select value={shownPair} onChange={(e) => setPair(e.target.value)} aria-label="元素ペア" id="pair-select">
-                  <optgroup label="構造ごとに対応するペア">
+                <select value={shownPair} onChange={(e) => setPair(e.target.value)} aria-label={t("cmp.elementPairs")} id="pair-select">
+                  <optgroup label={t("cmp.rolePairs")}>
                     {Object.entries(GENERIC).map(([k, l]) => (
                       <option key={k} value={k}>
-                        {l}
+                        {t(l)}
                       </option>
                     ))}
                   </optgroup>
-                  <optgroup label="元素ペア">
+                  <optgroup label={t("cmp.elementPairs")}>
                     {pairs.map((p) => (
                       <option key={p} value={p}>
                         {p}
@@ -223,41 +228,41 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
           {curveSeries.length ? (
             <LineChart
               series={curveSeries}
-              xLabel={curve === "xrd" ? "2θ (°)" : curve === "prdf" ? "r (Å)" : curve === "bvse" ? "ΔE (eV)" : "プローブ半径 r (Å)"}
-              yLabel={curve === "xrd" ? "相対強度" : curve === "prdf" ? "g(r)" : "体積分率 (%)"}
+              xLabel={curve === "xrd" ? "2θ (°)" : curve === "prdf" ? "r (Å)" : curve === "bvse" ? "ΔE (eV)" : `${t("feat.probe")} r (Å)`}
+              yLabel={curve === "xrd" ? t("feat.relIntensity") : curve === "prdf" ? "g(r)" : `${t("feat.volFrac")} (%)`}
               xDomain={curve === "xrd" ? [5, 90] : curve === "prdf" ? [0, 8] : undefined}
               height={250}
               xFmt={(x) => x.toFixed(2)}
               yFmt={(y) => y.toFixed(curve === "prdf" ? 2 : 1)}
             />
           ) : (
-            <p className="muted small">{gridRunning ? "BVSE グリッドを計算しています…" : "表示できる曲線がありません（可動イオンが未設定の構造は BVSE・空隙曲線がありません）。"}</p>
+            <p className="muted small">{t(gridRunning ? "cmp.gridRunningLong" : "cmp.noCurves")}</p>
           )}
         </section>
       </div>
 
       <section className="card">
         <div className="card-head">
-          <h2>特徴量の一覧</h2>
-          <span className="muted small">行をクリックすると上の棒グラフに表示します。セルの帯は行内での相対値です。</span>
+          <h2>{t("feat.all")}</h2>
+          <span className="muted small">{t("cmp.tableHint")}</span>
         </div>
         <div className="table-wrap">
           <table className="data compare-table">
             <thead>
               <tr>
-                <th>特徴量</th>
+                <th>{t("tsv.feature")}</th>
                 {docs.map((d) => (
                   <th key={d.id} className="num">
-                    <button className="linkbtn plain" onClick={() => onOpenDoc(d.id)} title="この構造を開く">
+                    <button className="linkbtn plain" onClick={() => onOpenDoc(d.id)} title={t("cmp.openDoc")}>
                       <i className="side-dot" style={{ background: seriesColor(d.colorSlot) }} />
                       {d.name}
                     </button>
-                    {errors[d.id] && <div className="warn-note small">計算エラー</div>}
+                    {errors[d.id] && <div className="warn-note small">{t("cmp.error")}</div>}
                   </th>
                 ))}
               </tr>
             </thead>
-            {(Object.keys(GROUP_LABEL) as FeatureGroup[]).map((g) => {
+            {GROUPS.map((g) => {
               const isCol = collapsed.has(g);
               return (
                 <tbody key={g}>
@@ -275,7 +280,7 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
                           })
                         }
                       >
-                        {isCol ? "▸" : "▾"} {GROUP_LABEL[g]}
+                        {isCol ? "▸" : "▾"} {groupLabel(t, g)}
                       </button>
                     </td>
                   </tr>
@@ -284,9 +289,9 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
                       const nums = docs.map((d) => val(d, f.key)).filter((x): x is number => typeof x === "number" && Number.isFinite(x));
                       const maxAbs = Math.max(1e-12, ...nums.map(Math.abs));
                       return (
-                        <tr key={f.key} className={`clickable ${barKey === f.key ? "is-selected" : ""}`} onClick={() => !f.text && setBarKey(f.key)} title={f.desc}>
+                        <tr key={f.key} className={`clickable ${barKey === f.key ? "is-selected" : ""}`} onClick={() => !f.text && setBarKey(f.key)} title={featDesc(t, f.key)}>
                           <td>
-                            {f.label}
+                            {featLabel(t, f.key)}
                             {f.unit && <span className="muted small"> ({f.unit})</span>}
                           </td>
                           {docs.map((d) => {
@@ -295,7 +300,7 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
                             return (
                               <td key={d.id} className="num mono cell-bar">
                                 {typeof v === "number" && Number.isFinite(v) && !f.text && <span className="cell-fill" style={{ width: `${(Math.abs(v) / maxAbs) * 100}%`, background: seriesColor(d.colorSlot) }} />}
-                                <span className="cell-val">{pend ? "…" : fmtFeature(f, v)}</span>
+                                <span className="cell-val">{pend ? "…" : fmtFeature(t, f, v)}</span>
                               </td>
                             );
                           })}

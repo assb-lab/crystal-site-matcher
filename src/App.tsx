@@ -9,6 +9,15 @@ import { useFeatures } from "./lib/useFeatures";
 import { SAMPLES, STARTUP_SAMPLES } from "./samples";
 import ThemeToggle from "./components/ThemeToggle";
 import { useThemePref } from "./lib/theme";
+import LangToggle from "./components/LangToggle";
+import { tError, useT, type MsgKey, type Params } from "./i18n";
+import { MsgError } from "./lib/messages";
+
+interface BannerItem {
+  key: MsgKey;
+  params: Params;
+  error?: unknown;
+}
 
 const MAX_BLOCKS_PER_FILE = 24;
 
@@ -40,7 +49,8 @@ export default function App() {
   // once the user opens the Features tab (or the comparison view). See #4.
   const [tab, setTab] = useState<Tab>("struct");
   const [themePref, setThemePref] = useThemePref();
-  const [banner, setBanner] = useState<string | null>(null);
+  const t = useT();
+  const [banner, setBanner] = useState<BannerItem[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -87,14 +97,14 @@ export default function App() {
 
   const openFiles = useCallback(
     async (files: FileList | File[]) => {
-      const errs: string[] = [];
+      const errs: BannerItem[] = [];
       const made: Doc[] = [];
       let current = docs;
       for (const f of Array.from(files)) {
         try {
           const text = await f.text();
           const blocks = blocksWithAtoms(text);
-          if (!blocks.length) throw new Error("原子座標を含むデータブロックが見つかりません（_atom_site_fract_x が必要です）。");
+          if (!blocks.length) throw new MsgError("err.noAtomBlock");
           const n = Math.min(blocks.length, MAX_BLOCKS_PER_FILE);
           for (let i = 0; i < n; i++) {
             try {
@@ -102,16 +112,16 @@ export default function App() {
               made.push(d);
               current = [...current, d];
             } catch (e) {
-              errs.push(`${f.name} の data_${blocks[i].name}: ${(e as Error).message}`);
+              errs.push({ key: "err.fileBlock", params: { file: f.name, block: blocks[i].name }, error: e });
             }
           }
-          if (blocks.length > MAX_BLOCKS_PER_FILE) errs.push(`${f.name} はデータブロックが ${blocks.length} 個あるため、先頭の ${MAX_BLOCKS_PER_FILE} 個だけ開きました。`);
+          if (blocks.length > MAX_BLOCKS_PER_FILE) errs.push({ key: "err.tooManyBlocks", params: { file: f.name, n: blocks.length, max: MAX_BLOCKS_PER_FILE } });
         } catch (e) {
-          errs.push(`${f.name} を読み込めませんでした: ${(e as Error).message}`);
+          errs.push({ key: "err.readFile", params: { file: f.name }, error: e });
         }
       }
       addDocs(made);
-      setBanner(errs.length ? errs.join(" / ") : null);
+      setBanner(errs.length ? errs : null);
     },
     [docs, addDocs],
   );
@@ -182,12 +192,12 @@ export default function App() {
           </span>
           <div>
             <h1>Crystal Site Matcher</h1>
-            <p className="brand-sub">配位多面体・シャノン半径・イオン伝導の特徴量で構造を読む</p>
+            <p className="brand-sub">{t("app.tagline")}</p>
           </div>
         </div>
         <div className="file-controls">
           <button className="btn btn-primary" onClick={() => fileRef.current?.click()} id="open-cif">
-            CIF を開く
+            {t("app.open")}
           </button>
           <input
             ref={fileRef}
@@ -201,16 +211,17 @@ export default function App() {
               e.target.value = "";
             }}
           />
-          <span className="muted small hide-narrow">複数ファイル・複数データブロックに対応。ドラッグ＆ドロップでも開けます。</span>
+          <span className="muted small hide-narrow">{t("app.openHint")}</span>
+          <LangToggle />
           <ThemeToggle value={themePref} onChange={setThemePref} />
         </div>
       </header>
 
       {banner && (
         <div className="banner banner-error" role="alert">
-          <span>{banner}</span>
+          <span>{banner.map((b) => t(b.key, { ...b.params, error: b.error !== undefined ? tError(t, b.error) : "" })).join(" / ")}</span>
           <button className="btn btn-ghost" onClick={() => setBanner(null)}>
-            閉じる
+            {t("common.close")}
           </button>
         </div>
       )}
@@ -263,10 +274,10 @@ export default function App() {
           />
         ) : (
           <main className="empty">
-            <h2>構造が開かれていません</h2>
-            <p className="muted">CIF ファイルを開くかドロップするか、左下のサンプルから追加してください。</p>
+            <h2>{t("app.emptyTitle")}</h2>
+            <p className="muted">{t("app.emptyBody")}</p>
             <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
-              CIF を開く
+              {t("app.open")}
             </button>
           </main>
         )}
@@ -274,7 +285,7 @@ export default function App() {
 
       {dragging && (
         <div className="dropzone" aria-hidden="true">
-          <div>CIF ファイルをドロップして開く（複数可）</div>
+          <div>{t("app.drop")}</div>
         </div>
       )}
     </div>

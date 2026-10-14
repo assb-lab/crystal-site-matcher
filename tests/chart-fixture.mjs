@@ -46,15 +46,22 @@ try {
       const range = padRange(Math.min(...values), Math.max(...values));
       assert.ok(niceTicks(...range).length > 0);
     }
-    const html = renderToStaticMarkup(createElement(FeaturesPanel, {
+    const { I18nProvider } = await server.ssrLoadModule('/src/i18n/index.tsx');
+    const props = {
       doc, update: () => {}, entry: {
         static: st, values: st.values, xrd: simulateXrd(doc.crystal),
         grid: null, gridStatus: 'pending', siteE: null, progress: 0,
       },
-    }));
+    };
+    const render = (lang) => renderToStaticMarkup(createElement(I18nProvider, { initial: lang }, createElement(FeaturesPanel, props)));
+    const html = render('ja');
     assert.match(html, /可動イオン間のホップ（9 本）/);
     assert.match(html, /ボトルネック半径 \(Å\) vs ホップ距離 \(Å\)/);
     assert.doesNotMatch(html, /(?:cx|cy|x|y)="(?:NaN|Infinity|-Infinity)"/);
+    const en = render('en');
+    assert.match(en, /Mobile-ion hops \(9\)/);
+    assert.match(en, /Bottleneck radius \(Å\) vs Hop distance \(Å\)/);
+    assert.doesNotMatch(en, /[\u3040-\u30ff\u4e00-\u9fff]/, 'untranslated Japanese text in the English features panel');
   }
 } finally {
   await server.close();
