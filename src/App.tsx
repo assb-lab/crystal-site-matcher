@@ -8,23 +8,6 @@ import { buildScene } from "./lib/scene";
 import { useFeatures } from "./lib/useFeatures";
 import { SAMPLES, STARTUP_SAMPLES } from "./samples";
 
-const storage = {
-  get(k: string) {
-    try {
-      return localStorage.getItem(k);
-    } catch {
-      return null;
-    }
-  },
-  set(k: string, v: string) {
-    try {
-      localStorage.setItem(k, v);
-    } catch {
-      /* ignore */
-    }
-  },
-};
-
 const MAX_BLOCKS_PER_FILE = 24;
 
 function nextSlot(docs: Doc[]): number {
@@ -51,12 +34,13 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(() => docs[0]?.id ?? null);
   const [mode, setMode] = useState<"structure" | "compare">("structure");
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<Tab>(() => (storage.get("csm.tab") as Tab) || "site");
+  // Always start on the lightweight structure tab; heavy feature calculations only run
+  // once the user opens the Features tab (or the comparison view). See #4.
+  const [tab, setTab] = useState<Tab>("struct");
   const [banner, setBanner] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => storage.set("csm.tab", tab), [tab]);
 
   const active = docs.find((d) => d.id === activeId) ?? docs[0] ?? null;
 

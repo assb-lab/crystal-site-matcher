@@ -133,10 +133,10 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
   };
 
   const tabs: [Tab, string][] = [
+    ["struct", "構造と結合"],
     ["site", "サイト解析"],
     ["subst", "置換候補"],
     ["feat", "特徴量"],
-    ["struct", "構造と結合"],
   ];
 
   return (
