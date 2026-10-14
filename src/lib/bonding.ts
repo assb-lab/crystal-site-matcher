@@ -1,5 +1,5 @@
 import { ELEMENTS, SHANNON, VESTA_CUTOFFS } from "./data";
-import { Crystal, Neighbor } from "./structure";
+import { Crystal, Neighbor, buildNeighborTable } from "./structure";
 
 export interface PairRule {
   max: number; // Å
@@ -139,4 +139,43 @@ export function computeBonds(cr: Crystal, ox: Record<string, number>, bs: BondSe
     eligible.push(e);
   });
   return { bonded, eligible };
+}
+
+// ---- memoised neighbour table / bonds (keyed on object identity) ----
+const tableCache = new WeakMap<Crystal, Map<number, Neighbor[][]>>();
+const bondCache = new WeakMap<Neighbor[][], WeakMap<Record<string, number>, WeakMap<BondSettings, BondTable>>>();
+
+export function rmaxFor(bs: BondSettings) {
+  const vals = [...Object.values(bs.pairs).map((p) => p.max), ...Object.values(bs.siteOverride)];
+  return Math.max(6, Math.ceil(Math.max(...vals, 0) + 1.5));
+}
+
+export function deriveBonds(crystal: Crystal, ox: Record<string, number>, bs: BondSettings): { table: Neighbor[][]; bonds: BondTable; rmax: number } {
+  const rmax = rmaxFor(bs);
+  let byR = tableCache.get(crystal);
+  if (!byR) {
+    byR = new Map();
+    tableCache.set(crystal, byR);
+  }
+  let table = byR.get(rmax);
+  if (!table) {
+    table = buildNeighborTable(crystal, rmax);
+    byR.set(rmax, table);
+  }
+  let a = bondCache.get(table);
+  if (!a) {
+    a = new WeakMap();
+    bondCache.set(table, a);
+  }
+  let b = a.get(ox);
+  if (!b) {
+    b = new WeakMap();
+    a.set(ox, b);
+  }
+  let bonds = b.get(bs);
+  if (!bonds) {
+    bonds = computeBonds(crystal, ox, bs, table);
+    b.set(bs, bonds);
+  }
+  return { table, bonds, rmax };
 }
