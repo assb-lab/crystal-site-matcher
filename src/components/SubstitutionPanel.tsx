@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Modal from "./Modal";
+import PeriodicTable, { CellInfo } from "./PeriodicTable";
 import type { Crystal } from "../lib/structure";
 import {
   Candidate,
@@ -40,6 +42,9 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
   const [cEl, setCEl] = useState("Mn");
   const [cOx, setCOx] = useState(2);
   const [cSpin, setCSpin] = useState<"" | "HS" | "LS">("");
+  const [ptMode, setPtMode] = useState<null | "compare" | "pick">(null);
+  const [ptEl, setPtEl] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   const hostOx = a?.host.ox ?? 0;
   const results = useMemo(() => {
@@ -74,6 +79,55 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
     setSelected(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a?.group, a?.host.site]);
+
+  // best-scoring ion per element under the current ranking filters
+  const bestByEl = useMemo(() => {
+    const m = new Map<string, CandidateResult>();
+    for (const r of filtered) {
+      const cur = m.get(r.el);
+      if (!cur || r.score > cur.score) m.set(r.el, r);
+    }
+    return m;
+  }, [filtered]);
+  const filteredKeys = useMemo(() => new Set(filtered.map((r) => r.key)), [filtered]);
+
+  const chooseElement = (el: string) => {
+    setCEl(el);
+    const ch = chargesFor(el);
+    const sameSign = ch.filter((v) => Math.sign(v) === Math.sign(hostOx || 1));
+    const pick = sameSign.includes(hostOx) ? hostOx : (sameSign[0] ?? ch[0]);
+    setCOx(pick);
+    setCSpin(spinsFor(el, pick)[0] ?? "");
+  };
+
+  const openDetail = (c: Candidate) => {
+    setSelected(c);
+    setPtMode(null);
+    setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+
+  const filterSummary = [
+    chargeFilter === "same" ? "同じ価数" : chargeFilter === "pm1" ? "価数差 ±1 まで" : "すべての価数",
+    quality === "reliable" ? "表・内挿の半径のみ" : "外挿・代用の半径も含む",
+    excludeRadio ? "放射性元素を除く" : "放射性元素も含む",
+    `サイズ許容幅 ${Math.round(opts.sizeTol * 100)}%`,
+  ].join("・");
+
+  const ptCell = (el: string, mode: "compare" | "pick"): CellInfo => {
+    const best = bestByEl.get(el);
+    const hasSameSign = chargesFor(el).some((v) => Math.sign(v) === Math.sign(hostOx || 1));
+    if (best) {
+      const charges = [...new Set(filtered.filter((r) => r.el === el).map((r) => r.ox))].sort((x, y) => x - y);
+      return {
+        state: best.verdict,
+        value: best.score.toFixed(0),
+        sub: charges.map((q) => signed(q)).join(" "),
+        title: `${ionLabel(best.el, best.ox, best.spin || undefined)}  スコア ${best.score.toFixed(0)}（${VERDICT_LABEL[best.verdict]}）`,
+      };
+    }
+    if (hasSameSign) return { state: "neutral", title: mode === "compare" ? `${el}: 現在の条件では候補なし` : el };
+    return { state: "disabled", title: `${el}: シャノン表に該当する価数のイオンなし` };
+  };
 
   if (!a) return <p className="muted">先に 3D 表示かサイト解析タブでサイトを選んでください。</p>;
 
@@ -127,7 +181,9 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
         <RadiusMap a={a} results={filtered} tol={opts.sizeTol} selectedKey={selected ? candKey(selected) : null} onSelect={(r) => setSelected(r)} />
       </section>
 
-      {detail && <DetailCard a={a} r={detail} onClose={() => setSelected(null)} />}
+      <div ref={detailRef} className="scroll-anchor">
+        {detail && <DetailCard a={a} r={detail} onClose={() => setSelected(null)} />}
+      </div>
 
       <section className="card">
         <div className="card-head">
@@ -136,19 +192,7 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
         <div className="row gap-s wrap">
           <label className="field-inline" htmlFor="c-el">
             <span>元素</span>
-            <select
-              id="c-el"
-              value={cEl}
-              onChange={(e) => {
-                const el = e.target.value;
-                setCEl(el);
-                const ch = chargesFor(el);
-                const sameSign = ch.filter((v) => Math.sign(v) === Math.sign(hostOx || 1));
-                const pick = sameSign.includes(hostOx) ? hostOx : (sameSign[0] ?? ch[0]);
-                setCOx(pick);
-                setCSpin(spinsFor(el, pick)[0] ?? "");
-              }}
-            >
+            <select id="c-el" value={cEl} onChange={(e) => chooseElement(e.target.value)}>
               {SHANNON_ELEMENTS.map((el) => (
                 <option key={el} value={el}>
                   {el}
@@ -156,6 +200,9 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
               ))}
             </select>
           </label>
+          <button className="btn btn-small" onClick={() => setPtMode("pick")} id="pick-element" aria-haspopup="dialog">
+            周期表から選ぶ
+          </button>
           <label className="field-inline" htmlFor="c-ox">
             <span>価数</span>
             <select
@@ -195,9 +242,14 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
       <section className="card">
         <div className="card-head">
           <h2>候補ランキング</h2>
-          <span className="muted small">
-            {filtered.length} / {results.length} イオン
-          </span>
+          <div className="row gap-s">
+            <span className="muted small">
+              {filtered.length} / {results.length} イオン
+            </span>
+            <button className="btn btn-small" onClick={() => setPtMode("compare")} id="open-ptable" aria-haspopup="dialog">
+              周期表で見る
+            </button>
+          </div>
         </div>
         <div className="filters">
           <label className="slider" htmlFor="tol">
@@ -318,6 +370,58 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
           幾何学的な目安です。結晶場安定化エネルギー、共有結合性、サイト選択性、合成温度や雰囲気、第二相の生成などは考慮していません。シャノン半径は主に酸化物・フッ化物から求められた値です。
         </p>
       </details>
+      <Modal
+        open={ptMode !== null}
+        onClose={() => setPtMode(null)}
+        wide
+        id="ptable-modal"
+        title={
+          ptMode === "pick" ? (
+            "元素を選ぶ"
+          ) : (
+            <>
+              周期表で比較 — {a.group}（{ionLabel(a.host.el, a.host.ox)}、CN {roman(a.cn)}）
+            </>
+          )
+        }
+      >
+        <p className="muted small">
+          {ptMode === "pick" ? "評価する元素をクリックしてください。色はランキングと同じ条件での最高スコアの判定です。" : "各元素のイオン（価数・スピン）のうち最もスコアの高いものの判定色と、そのスコア。"}
+          条件: {filterSummary}（ランキングと共通）。
+        </p>
+        <div className="pt-legend">
+          {(["good", "possible", "hard", "unlikely"] as const).map((v) => (
+            <span key={v} className={`pt-legend-item pt-${v}`}>
+              <i />
+              {VERDICT_LABEL[v]}
+            </span>
+          ))}
+          <span className="pt-legend-item pt-neutral">
+            <i />
+            条件外
+          </span>
+          <span className="pt-legend-item pt-marked-key">
+            <i />
+            ホスト元素
+          </span>
+        </div>
+        <PeriodicTable
+          ariaLabel="周期表"
+          cell={(el) => ptCell(el, ptMode === "pick" ? "pick" : "compare")}
+          selected={ptMode === "pick" ? cEl : ptEl}
+          marked={a.host.el}
+          onPick={(el) => {
+            if (ptMode === "pick") {
+              chooseElement(el);
+              setPtMode(null);
+            } else setPtEl(el);
+          }}
+        />
+        {ptMode === "compare" && ptEl && (
+          <ElementIons el={ptEl} rows={results.filter((r) => r.el === ptEl)} inFilter={filteredKeys} onOpen={openDetail} />
+        )}
+        {ptMode === "compare" && !ptEl && <p className="muted small">元素をクリックすると、その元素のイオンごとの値を表示します。</p>}
+      </Modal>
     </div>
   );
 }
@@ -521,6 +625,59 @@ function RadiusMap({
           Å
         </text>
       </svg>
+    </div>
+  );
+}
+
+function ElementIons({ el, rows, inFilter, onOpen }: { el: string; rows: CandidateResult[]; inFilter: Set<string>; onOpen: (c: Candidate) => void }) {
+  const sorted = [...rows].sort((x, y) => y.score - x.score);
+  if (!sorted.length) return <p className="muted small">{el} にはこのサイトと同じ符号の価数のイオンがシャノン表にありません。</p>;
+  return (
+    <div className="pt-ions">
+      <h3>{el} のイオン</h3>
+      <div className="table-wrap">
+        <table className="data ranking">
+          <thead>
+            <tr>
+              <th>イオン</th>
+              <th className="num">r (Å)</th>
+              <th className="num">Δr</th>
+              <th className="num">BVS</th>
+              <th className="num">Δq</th>
+              <th>スコア</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r) => {
+              const ok = inFilter.has(r.key);
+              return (
+                <tr key={r.key} className={ok ? "" : "is-out"}>
+                  <td>
+                    <strong>{ionLabel(r.el, r.ox, r.spin || undefined)}</strong>
+                    {!ok && <span className="tag tag-quiet">条件外</span>}
+                  </td>
+                  <td className="num mono" title={r.radius.note}>
+                    {r.radius.r.toFixed(3)}
+                    {r.radius.method !== "exact" && <sup className="approx">{r.radius.method === "interp" ? "i" : "*"}</sup>}
+                  </td>
+                  <td className="num mono">{pct(r.dSite ?? r.dHost, 1)}</td>
+                  <td className="num mono">{r.bvs !== null ? r.bvs.toFixed(2) : "—"}</td>
+                  <td className="num mono">{signed(r.dq)}</td>
+                  <td>
+                    <ScoreBar r={r} />
+                  </td>
+                  <td>
+                    <button className="btn btn-small" onClick={() => onOpen(r)}>
+                      詳細
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
