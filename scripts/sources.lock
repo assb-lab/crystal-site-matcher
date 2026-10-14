@@ -1,0 +1,5 @@
+# Upstream sources for scripts/build-data.py, pinned by commit.
+# name           repository                                         commit                                    paths (sparse checkout)
+pymatgen         https://github.com/materialsproject/pymatgen       975fed926f3b2606648ddb57679ddceaeac10d8a  dev_scripts/periodic_table_resources/Shannon_Radii.csv src/pymatgen/analysis/vesta_cutoffs.yaml src/pymatgen/analysis/chemenv/coordination_environments/coordination_geometries_files/ src/pymatgen/analysis/diffraction/atomic_scattering_params.json
+pymatgen-core    https://github.com/materialsproject/pymatgen-core  2d6622329d65f1ac490022faa19eef6dbf4dc522  src/pymatgen/core/periodic_table.json.gz src/pymatgen/core/bvparam_1991.yaml src/pymatgen/core/ElementColorSchemes.yaml src/pymatgen/symmetry/symm_ops.json
+BVlain           https://github.com/dembart/BVlain                  45814691da131efc5d4b05d54437cc77c530a23c  bvlain/data/

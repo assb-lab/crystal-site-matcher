@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Regenerate src/data/*.json from pymatgen's bundled data files.
 
-Usage:
-  python3 scripts/build-data.py <pymatgen-repo> <pymatgen-core-repo> [<BVlain-repo>]
+Usage (environment pinned by pyproject.toml / uv.lock, sources by scripts/sources.lock):
+  bash scripts/fetch-sources.sh
+  uv run --locked scripts/build-data.py .sources/pymatgen .sources/pymatgen-core .sources/BVlain
 
 Sources (all redistributed under pymatgen's MIT licence):
   - Shannon (1976) effective ionic / crystal radii : pymatgen/dev_scripts/periodic_table_resources/Shannon_Radii.csv

@@ -1,0 +1,25 @@
+# Python environment for the data-generation scripts in scripts/ (not a package).
+#   uv sync --locked                      # create .venv exactly as in uv.lock
+#   bash scripts/fetch-sources.sh         # upstream data at the commits in scripts/sources.lock
+#   uv run scripts/build-data.py .sources/pymatgen .sources/pymatgen-core .sources/BVlain
+
+[project]
+name = "crystal-site-matcher-scripts"
+version = "0.1.0"
+description = "Reference-data and sample generation scripts for Crystal Site Matcher"
+requires-python = ">=3.12"
+dependencies = [
+  # BVlain's parameter pickles contain numpy scalars
+  "numpy>=2.0",
+]
+
+[tool.uv]
+# Virtual project: install the dependencies only, never build this directory.
+package = false
+required-version = ">=0.11"
+# Ignore distributions uploaded after this instant when (re)locking. Fixed timestamp
+# rather than a relative window so that re-locking is reproducible; move it forward
+# deliberately (≥ 7 days in the past) when updating dependencies.
+exclude-newer = "2026-10-07T00:00:00Z"
+# Only ever resolve from the first index that has a package (dependency-confusion guard).
+index-strategy = "first-index"

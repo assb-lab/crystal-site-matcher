@@ -8,3 +8,7 @@ pnpm-debug.log*
 package-lock.json
 yarn.lock
 bun.lockb
+# Python (uv)
+.venv/
+__pycache__/
+.sources/
