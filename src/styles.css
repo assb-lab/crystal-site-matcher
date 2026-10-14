@@ -1630,3 +1630,32 @@ tr.is-host td {
   height: 3px;
   border-radius: 2px;
 }
+
+/* ---------- theme toggle ---------- */
+.theme-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  background: var(--panel-2);
+  gap: 2px;
+}
+.theme-toggle button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.theme-toggle button:hover {
+  color: var(--ink);
+}
+.theme-toggle button.is-on {
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: var(--shadow);
+}
