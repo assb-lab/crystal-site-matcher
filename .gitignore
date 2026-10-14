@@ -2,3 +2,9 @@ node_modules
 dist-ssr
 *.local
 .DS_Store
+pnpm-debug.log*
+.pnpm-store
+# lockfiles of other package managers (this project uses pnpm-lock.yaml only)
+package-lock.json
+yarn.lock
+bun.lockb

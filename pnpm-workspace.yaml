@@ -1,0 +1,31 @@
+# pnpm settings (pnpm >= 12). Reference: https://pnpm.io/settings
+# Supply-chain hardening — keep these unless there is a concrete reason to relax one.
+
+# Do not install any version published less than 7 days ago (in minutes).
+# Most malicious releases are detected and unpublished within this window.
+minimumReleaseAge: 10080
+
+# Fail if a package's publish trust level (e.g. trusted publishing / provenance)
+# is lower than for its earlier releases — a common sign of a hijacked account.
+trustPolicy: no-downgrade
+# 確認済みの例外（版を固定して指定し、パッケージ全体は除外しない）
+trustPolicyExclude:
+  # 6.x 系の後継リリースで、7.x にある provenance がない。@babel/core 経由で必要
+  - semver@6.3.1
+
+# Transitive dependencies must come from the registry; git / tarball URLs are
+# only allowed for direct dependencies listed in package.json.
+blockExoticSubdeps: true
+
+# Dependency lifecycle scripts (preinstall/install/postinstall) never run unless
+# reviewed here; an unreviewed package with build scripts fails the install.
+strictDepBuilds: true
+allowBuilds:
+  # esbuild (used by Vite) verifies / links its platform binary in postinstall.
+  esbuild: true
+
+# Refuse to install with a Node.js or pnpm version outside package.json "engines".
+engineStrict: true
+
+# Check store contents against the lockfile integrity hashes.
+verifyStoreIntegrity: true

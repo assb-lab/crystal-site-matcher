@@ -55,12 +55,28 @@ CIF ファイルの結晶構造で、あるサイトのイオンを別のイオ�
 
 ## 開発
 
+パッケージマネージャーは **pnpm（12.3.4 以上）** を使います。npm / yarn では `devEngines` の指定によりインストールが止まります。
+
 ```bash
-npm install
-npm run dev        # 開発サーバー
-npm run build      # dist/index.html（1 ファイル）を生成
-npm run typecheck
+# pnpm を用意（どれか 1 つ）: corepack enable（Node.js 24 以下に同梱）/ brew install pnpm
+pnpm install
+pnpm dev                 # 開発サーバー
+pnpm build               # dist/index.html（1 ファイル）を生成
+pnpm typecheck
 ```
+
+### 依存パッケージの安全設定（`pnpm-workspace.yaml`）
+
+| 設定 | 内容 |
+| --- | --- |
+| `minimumReleaseAge: 10080` | 公開から 7 日未満のバージョンはインストールしない |
+| `trustPolicy: no-downgrade` | 以前のリリースより信頼レベル（Trusted Publishing など）が下がったパッケージで失敗する |
+| `blockExoticSubdeps: true` | 推移的依存に git / tarball URL を使わせない |
+| `strictDepBuilds: true` + `allowBuilds` | 依存パッケージの install スクリプトは許可したもの（esbuild）だけ実行し、未確認のものがあればインストールを失敗させる |
+| `engineStrict: true` | `engines` の Node.js / pnpm バージョン外では実行しない |
+| `verifyStoreIntegrity: true` | ストアの内容をロックファイルのハッシュと照合する |
+
+依存を追加・更新したら `pnpm-lock.yaml` もコミットし、CI などでは `pnpm install --frozen-lockfile` を使ってください。
 
 技術構成: Vite + React + TypeScript + three.js（TrackballControls、ConvexGeometry）、`vite-plugin-singlefile` で 1 ファイル化。
 
@@ -72,6 +88,10 @@ npm run typecheck
 python3 scripts/build-data.py <pymatgen リポジトリ> <pymatgen-core リポジトリ> <BVlain リポジトリ>
 python3 scripts/make-samples.py   # src/samples/*.cif を再生成
 ```
+
+## ライセンス
+
+MIT License © 2026 assb-lab（[LICENSE](LICENSE)）。同梱データの出典とライセンスは下記のとおりです。
 
 ## 出典
 
