@@ -22,6 +22,7 @@ export interface ElementInfo {
   ox: number[]; // common oxidation states
   icsd: number[];
   col: [number, number, number];
+  m: number | null; // atomic mass (u)
 }
 
 export interface IdealPolyhedron {

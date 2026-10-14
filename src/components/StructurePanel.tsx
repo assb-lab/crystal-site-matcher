@@ -225,7 +225,7 @@ export default function StructurePanel(p: Props) {
                       </div>
                     </td>
                     <td className="muted small">
-                      {r.def.toFixed(2)} <span title={r.source === "VESTA" ? "VESTA の既定値" : r.source === "Shannon" ? "シャノン半径の和 × 1.25" : "原子半径の和 × 1.15"}>({r.source})</span>
+                      {r.def.toFixed(2)} <span title={r.source === "VESTA" ? "VESTA の既定値" : r.source === "Shannon" ? "シャノン半径の和 × 1.25（VESTA 値がある場合は × 1.1 を下限）" : "原子半径の和 × 1.15"}>({r.source})</span>
                     </td>
                   </tr>
                 );

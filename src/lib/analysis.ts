@@ -251,17 +251,15 @@ export function analyzeSite(cr: Crystal, ox: Record<string, number>, bonds: Bond
 
 export function bondValenceSum(el: string, ligands: LigandInfo[]): number | null {
   if (ligands.length === 0) return null;
+  // Each bond is weighted by the occupancy of the ligand site (expected bond valence),
+  // so partially occupied / vacancy-rich neighbour sites are not over-counted.
   let v = 0;
   for (const l of ligands) {
-    let w = 0,
-      s = 0;
     for (const sp of l.species) {
       const r0 = bvR0(el, sp.el);
       if (r0 === null) return null;
-      s += sp.occ * Math.exp((r0 - l.nb.d) / BV_B);
-      w += sp.occ;
+      v += Math.min(1, sp.occ) * Math.exp((r0 - l.nb.d) / BV_B);
     }
-    v += s / w;
   }
   return v;
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
+import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import type { SceneSpec } from "../lib/scene";
 import type { Vec3 } from "../lib/structure";
 
@@ -265,119 +266,9 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
     content.position.set(-spec.center[0], -spec.center[1], -spec.center[2]);
     content.updateMatrixWorld();
 
-    // atoms
-    const sphere = new THREE.SphereGeometry(1, 28, 18);
-    const atomMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.05 });
-    const mesh = new THREE.InstancedMesh(sphere, atomMat, Math.max(spec.atoms.length, 1));
-    mesh.count = spec.atoms.length;
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    spec.atoms.forEach((a, i) => {
-      m4.compose(new THREE.Vector3(...a.xyz), q, new THREE.Vector3(a.radius, a.radius, a.radius));
-      mesh.setMatrixAt(i, m4);
-      mesh.setColorAt(i, srgb(a.color));
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    content.add(mesh);
-    ctx.atomMesh = mesh;
-    ctx.atomKeys = spec.atoms.map((a) => a.key);
-
-    // selection halo
-    const sel = spec.atoms.find((a) => a.key === spec.selectedKey);
-    if (sel) {
-      const halo = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), ctx.haloMat.clone());
-      halo.position.set(...sel.xyz);
-      halo.scale.setScalar(sel.radius * 1.55 + 0.12);
-      halo.renderOrder = 3;
-      content.add(halo);
-    }
-
-    // bonds (two coloured halves each)
-    if (spec.bonds.length) {
-      const cyl = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true);
-      const bmat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.05 });
-      const bm = new THREE.InstancedMesh(cyl, bmat, spec.bonds.length * 2);
-      const up = new THREE.Vector3(0, 1, 0);
-      let k = 0;
-      const r = spec.bondRadius;
-      for (const b of spec.bonds) {
-        const A = new THREE.Vector3(...b.a),
-          B = new THREE.Vector3(...b.b);
-        const M = A.clone().add(B).multiplyScalar(0.5);
-        const dir = B.clone().sub(A).normalize();
-        q.setFromUnitVectors(up, dir);
-        for (const [p0, p1, col] of [
-          [A, M, b.ca],
-          [M, B, b.cb],
-        ] as const) {
-          const len = p0.distanceTo(p1);
-          m4.compose(p0.clone().add(p1).multiplyScalar(0.5), q, new THREE.Vector3(r, len, r));
-          bm.setMatrixAt(k, m4);
-          bm.setColorAt(k, srgb(col as [number, number, number]));
-          k++;
-        }
-      }
-      bm.instanceMatrix.needsUpdate = true;
-      if (bm.instanceColor) bm.instanceColor.needsUpdate = true;
-      content.add(bm);
-    }
-
-    // polyhedra
-    for (const p of spec.polys) {
-      let geom: THREE.BufferGeometry | null = null;
-      try {
-        if (p.verts.length >= 4) {
-          geom = new ConvexGeometry(p.verts.map((v) => new THREE.Vector3(...v)));
-          if (!geom.getAttribute("position") || geom.getAttribute("position").count === 0) geom = null;
-        }
-      } catch {
-        geom = null;
-      }
-      if (!geom && p.verts.length >= 3) {
-        geom = new THREE.BufferGeometry();
-        const flat: number[] = [];
-        for (let i = 1; i + 1 < p.verts.length; i++) flat.push(...p.verts[0], ...p.verts[i], ...p.verts[i + 1]);
-        geom.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
-        geom.computeVertexNormals();
-      }
-      if (!geom) continue;
-      const mat = new THREE.MeshStandardMaterial({
-        color: srgb(p.color),
-        transparent: true,
-        opacity: p.highlight ? Math.min(0.85, spec.polyOpacity + 0.25) : spec.polyOpacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        roughness: 0.65,
-        metalness: 0,
-        emissive: p.highlight ? new THREE.Color(cssVar("--select", "#ffb000")) : new THREE.Color(0x000000),
-        emissiveIntensity: p.highlight ? 0.25 : 0,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-      });
-      const pm = new THREE.Mesh(geom, mat);
-      pm.renderOrder = 2;
-      content.add(pm);
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(geom, 8),
-        new THREE.LineBasicMaterial({ color: p.highlight ? new THREE.Color(cssVar("--select-edge", "#b06f00")) : srgb(p.color, 0.5), transparent: true, opacity: 0.9 }),
-      );
-      edges.renderOrder = 2;
-      content.add(edges);
-    }
-
-    // cell
-    if (spec.cellEdges.length) {
-      const pts: number[] = [];
-      for (const [a, b] of spec.cellEdges) pts.push(...a, ...b);
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-      const lines = new THREE.LineSegments(g, ctx.cellMat.clone());
-      (lines.material as THREE.LineBasicMaterial).color = ctx.cellMat.color;
-      content.add(lines);
-    }
+    const built = populateContent(content, spec, { halo: ctx.haloMat, cell: ctx.cellMat });
+    ctx.atomMesh = built.atomMesh;
+    ctx.atomKeys = built.atomKeys;
 
     // labels
     const overlay = overlayRef.current!;
@@ -432,6 +323,211 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
   );
 }
 
+/** Build all 3D objects for a scene into `content` (shared by the main view and thumbnails). */
+export function populateContent(
+  content: THREE.Group,
+  spec: SceneSpec,
+  colors: { halo: THREE.MeshBasicMaterial; cell: THREE.LineBasicMaterial },
+): { atomMesh: THREE.InstancedMesh; atomKeys: string[] } {
+  // atoms
+  const sphere = new THREE.SphereGeometry(1, 28, 18);
+  const atomMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.05 });
+  const mesh = new THREE.InstancedMesh(sphere, atomMat, Math.max(spec.atoms.length, 1));
+  mesh.count = spec.atoms.length;
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  spec.atoms.forEach((a, i) => {
+    m4.compose(new THREE.Vector3(...a.xyz), q, new THREE.Vector3(a.radius, a.radius, a.radius));
+    mesh.setMatrixAt(i, m4);
+    mesh.setColorAt(i, srgb(a.color));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.computeBoundingSphere();
+  content.add(mesh);
+
+  // selection halo
+  const sel = spec.atoms.find((a) => a.key === spec.selectedKey);
+  if (sel) {
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), colors.halo.clone());
+    halo.position.set(...sel.xyz);
+    halo.scale.setScalar(sel.radius * 1.55 + 0.12);
+    halo.renderOrder = 3;
+    content.add(halo);
+  }
+
+  // bonds (two coloured halves each)
+  if (spec.bonds.length) {
+    const cyl = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true);
+    const bmat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.05 });
+    const bm = new THREE.InstancedMesh(cyl, bmat, spec.bonds.length * 2);
+    const up = new THREE.Vector3(0, 1, 0);
+    let k = 0;
+    const r = spec.bondRadius;
+    for (const b of spec.bonds) {
+      const A = new THREE.Vector3(...b.a),
+        B = new THREE.Vector3(...b.b);
+      const M = A.clone().add(B).multiplyScalar(0.5);
+      const dir = B.clone().sub(A).normalize();
+      q.setFromUnitVectors(up, dir);
+      for (const [p0, p1, col] of [
+        [A, M, b.ca],
+        [M, B, b.cb],
+      ] as const) {
+        const len = p0.distanceTo(p1);
+        m4.compose(p0.clone().add(p1).multiplyScalar(0.5), q, new THREE.Vector3(r, len, r));
+        bm.setMatrixAt(k, m4);
+        bm.setColorAt(k, srgb(col as [number, number, number]));
+        k++;
+      }
+    }
+    bm.instanceMatrix.needsUpdate = true;
+    if (bm.instanceColor) bm.instanceColor.needsUpdate = true;
+    content.add(bm);
+  }
+
+  // polyhedra
+  for (const p of spec.polys) {
+    let geom: THREE.BufferGeometry | null = null;
+    try {
+      if (p.verts.length >= 4) {
+        geom = new ConvexGeometry(p.verts.map((v) => new THREE.Vector3(...v)));
+        if (!geom.getAttribute("position") || geom.getAttribute("position").count === 0) geom = null;
+      }
+    } catch {
+      geom = null;
+    }
+    if (!geom && p.verts.length >= 3) {
+      geom = new THREE.BufferGeometry();
+      const flat: number[] = [];
+      for (let i = 1; i + 1 < p.verts.length; i++) flat.push(...p.verts[0], ...p.verts[i], ...p.verts[i + 1]);
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
+      geom.computeVertexNormals();
+    }
+    if (!geom) continue;
+    const mat = new THREE.MeshStandardMaterial({
+      color: srgb(p.color),
+      transparent: true,
+      opacity: p.highlight ? Math.min(0.85, spec.polyOpacity + 0.25) : spec.polyOpacity,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      roughness: 0.65,
+      metalness: 0,
+      emissive: p.highlight ? new THREE.Color(cssVar("--select", "#ffb000")) : new THREE.Color(0x000000),
+      emissiveIntensity: p.highlight ? 0.25 : 0,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+    const pm = new THREE.Mesh(geom, mat);
+    pm.renderOrder = 2;
+    content.add(pm);
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geom, 8),
+      new THREE.LineBasicMaterial({ color: p.highlight ? new THREE.Color(cssVar("--select-edge", "#b06f00")) : srgb(p.color, 0.5), transparent: true, opacity: 0.9 }),
+    );
+    edges.renderOrder = 2;
+    content.add(edges);
+  }
+
+  // cell
+  if (spec.cellEdges.length) {
+    const pts: number[] = [];
+    for (const [a, b] of spec.cellEdges) pts.push(...a, ...b);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    const lines = new THREE.LineSegments(g, colors.cell.clone());
+    (lines.material as THREE.LineBasicMaterial).color = colors.cell.color;
+    content.add(lines);
+  }
+
+
+  // migration hops (straight segments, coloured by bottleneck radius)
+  if (spec.hopLines.length) {
+    const pts: number[] = [];
+    const cols: number[] = [];
+    for (const h of spec.hopLines) {
+      pts.push(...h.a, ...h.b);
+      const c = srgb(h.color);
+      cols.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthTest: false }));
+    lines.renderOrder = 5;
+    content.add(lines);
+  }
+
+  // BVSE isosurface
+  if (spec.iso) addIsosurface(content, spec.iso);
+
+  return { atomMesh: mesh, atomKeys: spec.atoms.map((a) => a.key) };
+}
+
+function addIsosurface(content: THREE.Group, iso: NonNullable<SceneSpec["iso"]>) {
+  const N = 52;
+  const mat = new THREE.MeshStandardMaterial({
+    color: srgb(iso.color),
+    transparent: true,
+    opacity: 0.62,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    roughness: 0.45,
+    emissive: srgb(iso.color),
+    emissiveIntensity: 0.25,
+  });
+  const mc = new MarchingCubes(N, mat, false, false, 250000);
+  const [na, nb, nc] = iso.n;
+  const f = iso.field;
+  const at = (i: number, j: number, k: number) => {
+    i = ((i % na) + na) % na;
+    j = ((j % nb) + nb) % nb;
+    k = ((k % nc) + nc) % nc;
+    return f[i + na * (j + nb * k)];
+  };
+  const sample = (u: number, v: number, w: number) => {
+    const x = u * na,
+      y = v * nb,
+      z = w * nc;
+    const i = Math.floor(x),
+      j = Math.floor(y),
+      k = Math.floor(z);
+    const dx = x - i,
+      dy = y - j,
+      dz = z - k;
+    let s = 0;
+    for (let a = 0; a < 2; a++)
+      for (let b = 0; b < 2; b++)
+        for (let c = 0; c < 2; c++) s += (a ? dx : 1 - dx) * (b ? dy : 1 - dy) * (c ? dz : 1 - dz) * at(i + a, j + b, k + c);
+    return s;
+  };
+  for (let z = 0; z < N; z++)
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++) mc.field[x + N * (y + N * z)] = sample((x - 2) / (N - 4), (y - 2) / (N - 4), (z - 2) / (N - 4));
+  mc.isolation = iso.level;
+  mc.update();
+  const sc = N / 2 / (N - 4),
+    off = (N / 2 - 2) / (N - 4);
+  const [A, B, C] = iso.axes;
+  for (let i = 0; i < iso.supercell[0]; i++)
+    for (let j = 0; j < iso.supercell[1]; j++)
+      for (let k = 0; k < iso.supercell[2]; k++) {
+        const m = new THREE.Mesh(mc.geometry, mat);
+        // local [-1,1]^3 → fractional (off + sc·f) → Cartesian
+        const M = new THREE.Matrix4().set(
+          A[0] * sc, B[0] * sc, C[0] * sc, A[0] * (off + i) + B[0] * (off + j) + C[0] * (off + k),
+          A[1] * sc, B[1] * sc, C[1] * sc, A[1] * (off + i) + B[1] * (off + j) + C[1] * (off + k),
+          A[2] * sc, B[2] * sc, C[2] * sc, A[2] * (off + i) + B[2] * (off + j) + C[2] * (off + k),
+          0, 0, 0, 1,
+        );
+        m.matrixAutoUpdate = false;
+        m.matrix.copy(M);
+        m.renderOrder = 4;
+        content.add(m);
+      }
+}
+
 function setView(ctx: Ctx, dir: ViewDir) {
   const { camera, controls, axes } = ctx;
   const A = new THREE.Vector3(...axes.a),
@@ -479,4 +575,52 @@ function setView(ctx: Ctx, dir: ViewDir) {
   camera.far = dist * 10;
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnails: one shared offscreen renderer, transparent background.
+let thumbCtx: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera } | null = null;
+
+export function renderThumbnail(spec: SceneSpec, size = 176): string | null {
+  try {
+    if (!thumbCtx) {
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(size, size, false);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setClearColor(0x000000, 0);
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 2000);
+      scene.add(camera);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x8a90a0, 1.6));
+      const key = new THREE.DirectionalLight(0xffffff, 2.2);
+      key.position.set(1.5, 2, 3);
+      camera.add(key);
+      thumbCtx = { renderer, scene, camera };
+    }
+    const { renderer, scene, camera } = thumbCtx;
+    const content = new THREE.Group();
+    populateContent(content, spec, {
+      halo: new THREE.MeshBasicMaterial({ color: 0xffb000, transparent: true, opacity: 0.35 }),
+      cell: new THREE.LineBasicMaterial({ color: 0x8890a0 }),
+    });
+    content.position.set(-spec.center[0], -spec.center[1], -spec.center[2]);
+    scene.add(content);
+    const d = new THREE.Vector3(0.62, -1.0, 0.42).normalize();
+    const dist = (spec.extent / Math.tan(((FOV / 2) * Math.PI) / 180)) * 1.02;
+    camera.position.copy(d.multiplyScalar(dist));
+    camera.up.set(0, 0, 1);
+    camera.near = dist / 100;
+    camera.far = dist * 10;
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    renderer.clear();
+    renderer.render(scene, camera);
+    const url = renderer.domElement.toDataURL("image/png");
+    scene.remove(content);
+    disposeTree(content);
+    return url;
+  } catch {
+    return null;
+  }
 }

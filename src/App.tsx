@@ -1,37 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Viewer, { ViewDir } from "./components/Viewer";
-import SitePanel from "./components/SitePanel";
-import SubstitutionPanel from "./components/SubstitutionPanel";
-import StructurePanel from "./components/StructurePanel";
-import ViewControls from "./components/ViewControls";
-import { parseCif, CifBlock } from "./lib/cif";
-import { Crystal, buildNeighborTable, crystalFromCif, guessOxidationStates, formulaString } from "./lib/structure";
-import { BondSettings, computeBonds, defaultBondSettings, pairKey } from "./lib/bonding";
-import { analyzeSite, RadiusKind } from "./lib/analysis";
-import { DEFAULT_VIEW, ViewOptions, atomKey, buildScene, defaultPolyElements, parseAtomKey } from "./lib/scene";
-import { ionLabel } from "./lib/format";
-import { SAMPLES } from "./samples";
-
-type Tab = "site" | "subst" | "struct";
-
-interface Loaded {
-  id: string;
-  fileName: string;
-  blocks: CifBlock[];
-  blockIdx: number;
-  crystal: Crystal;
-  preferSite?: string;
-}
-
-let loadCounter = 0;
-
-function loadText(text: string, fileName: string, blockIdx = 0, preferSite?: string): Loaded {
-  const blocks = parseCif(text).filter((b) => b.loops.some((l) => l.tags.includes("_atom_site_fract_x")));
-  if (blocks.length === 0) throw new Error("原子座標を含むデータブロックが見つかりません（_atom_site_fract_x が必要です）。");
-  const idx = Math.min(blockIdx, blocks.length - 1);
-  const crystal = crystalFromCif(blocks[idx]);
-  return { id: `${fileName}#${idx}#${++loadCounter}`, fileName, blocks, blockIdx: idx, crystal, preferSite };
-}
+import Sidebar from "./components/Sidebar";
+import StructureView, { Tab } from "./components/StructureView";
+import CompareView from "./components/CompareView";
+import { renderThumbnail } from "./components/Viewer";
+import { Doc, blocksWithAtoms, createDoc, deriveBonds, featureSig } from "./lib/doc";
+import { buildScene } from "./lib/scene";
+import { useFeatures } from "./lib/useFeatures";
+import { SAMPLES, STARTUP_SAMPLES } from "./samples";
 
 const storage = {
   get(k: string) {
@@ -50,97 +25,137 @@ const storage = {
   },
 };
 
-export default function App() {
-  const [loaded, setLoaded] = useState<Loaded>(() => loadText(SAMPLES[0].text, `${SAMPLES[0].id}.cif`, 0, SAMPLES[0].site));
-  const [sampleId, setSampleId] = useState<string>(SAMPLES[0].id);
-  const [error, setError] = useState<string | null>(null);
-  const crystal = loaded.crystal;
+const MAX_BLOCKS_PER_FILE = 24;
 
-  const initialOx = useMemo(() => guessOxidationStates(crystal), [crystal]);
-  const [ox, setOx] = useState<Record<string, number>>(initialOx.byLabel);
-  const [bondSettings, setBondSettings] = useState<BondSettings>(() => defaultBondSettings(crystal, initialOx.byLabel));
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [hostSite, setHostSite] = useState<number | undefined>(undefined);
-  const [hostSpin, setHostSpin] = useState<"" | "HS" | "LS">("");
-  const [radiusKind, setRadiusKind] = useState<RadiusKind>("ionic");
-  const [cutScope, setCutScope] = useState<"pair" | "site">("pair");
-  const [view, setView] = useState<ViewOptions>(DEFAULT_VIEW);
-  const [viewCmd, setViewCmd] = useState<{ dir: ViewDir; n: number } | null>(null);
+function nextSlot(docs: Doc[]): number {
+  const used = new Set(docs.map((d) => d.colorSlot));
+  for (let i = 0; i < 8; i++) if (!used.has(i)) return i;
+  return 8; // beyond the categorical palette: neutral colour, identified by label
+}
+
+function sampleDoc(id: string, docs: Doc[]): Doc | null {
+  const s = SAMPLES.find((x) => x.id === id);
+  if (!s) return null;
+  return createDoc(blocksWithAtoms(s.text), `${s.id}.cif`, 0, nextSlot(docs), s.site);
+}
+
+export default function App() {
+  const [docs, setDocs] = useState<Doc[]>(() => {
+    const out: Doc[] = [];
+    for (const id of STARTUP_SAMPLES) {
+      const d = sampleDoc(id, out);
+      if (d) out.push(d);
+    }
+    return out;
+  });
+  const [activeId, setActiveId] = useState<string | null>(() => docs[0]?.id ?? null);
+  const [mode, setMode] = useState<"structure" | "compare">("structure");
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<Tab>(() => (storage.get("csm.tab") as Tab) || "site");
+  const [banner, setBanner] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [needsInit, setNeedsInit] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (panelRef.current) panelRef.current.scrollTop = 0;
-  }, [loaded.id, tab]);
 
   useEffect(() => storage.set("csm.tab", tab), [tab]);
 
-  // reset dependent state when a new structure arrives
-  const lastId = useRef(loaded.id);
+  const active = docs.find((d) => d.id === activeId) ?? docs[0] ?? null;
+
+  const updateDoc = useCallback((id: string, f: (d: Doc) => Partial<Doc>) => {
+    setDocs((ds) => ds.map((d) => (d.id === id ? { ...d, ...f(d) } : d)));
+  }, []);
+  const updateActive = useCallback((f: (d: Doc) => Partial<Doc>) => active && updateDoc(active.id, f), [active, updateDoc]);
+
+  // ---------- features ----------
+  const compareDocs = docs.filter((d) => !excluded.has(d.id));
+  const wantedIds = useMemo(() => {
+    if (mode === "compare") return compareDocs.map((d) => d.id);
+    if (active && (tab === "feat" || active.view.showHops || active.view.showIso)) return [active.id];
+    return [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, tab, active?.id, active?.view.showHops, active?.view.showIso, compareDocs.map((d) => d.id).join(",")]);
+  const { entries, errors } = useFeatures(docs, wantedIds);
+  const freshEntry = (d: Doc) => (entries[d.id] && entries[d.id].sig === featureSig(d) ? entries[d.id] : undefined);
+
+  // ---------- thumbnails (one per tick) ----------
   useEffect(() => {
-    if (lastId.current === loaded.id) return;
-    lastId.current = loaded.id;
-    setOx(initialOx.byLabel);
-    setBondSettings(defaultBondSettings(crystal, initialOx.byLabel));
-    setSelectedKey(null);
-    setHostSite(undefined);
-    setHostSpin("");
-    setNeedsInit(true);
-  }, [loaded.id, crystal, initialOx]);
+    const d = docs.find((x) => x.thumb === null);
+    if (!d) return;
+    const t = setTimeout(() => {
+      const { bonds } = deriveBonds(d.crystal, d.ox, d.bondSettings);
+      const spec = buildScene(d.crystal, bonds, { ...d.view, showLabels: false, supercell: [1, 1, 1], showHops: false, showIso: false, atomScale: 0.3 }, null);
+      updateDoc(d.id, () => ({ thumb: renderThumbnail(spec) ?? "" }));
+    }, 30);
+    return () => clearTimeout(t);
+  }, [docs, updateDoc]);
 
-  const rmax = useMemo(() => {
-    const vals = [...Object.values(bondSettings.pairs).map((p) => p.max), ...Object.values(bondSettings.siteOverride)];
-    return Math.max(6, Math.ceil(Math.max(...vals, 0) + 1.5));
-  }, [bondSettings]);
-  const table = useMemo(() => buildNeighborTable(crystal, rmax), [crystal, rmax]);
-  const bonds = useMemo(() => computeBonds(crystal, ox, bondSettings, table), [crystal, ox, bondSettings, table]);
-
-  // pick a default site + polyhedron centres once bonds exist for the new structure
-  useEffect(() => {
-    if (!needsInit || lastId.current !== loaded.id) return;
-    setNeedsInit(false);
-    setView((v) => ({ ...v, polyElements: defaultPolyElements(crystal, ox, bonds), hiddenElements: [] }));
-    const pref = loaded.preferSite ? crystal.groups.find((g) => g.key.split("/").includes(loaded.preferSite!)) : undefined;
-    const cationGroup =
-      crystal.groups.find((g) => {
-        const p = crystal.positions[g.positions[0]];
-        const cn = bonds.bonded[p.index].length;
-        return (ox[crystal.sites[p.main].label] ?? 0) > 0 && cn >= 4 && cn <= 8;
-      }) ?? crystal.groups[0];
-    const g = pref ?? cationGroup;
-    setSelectedKey(atomKey(g.positions[0], [0, 0, 0]));
-  }, [needsInit, loaded, crystal, ox, bonds]);
-
-  const selPos = selectedKey ? parseAtomKey(selectedKey).pos : -1;
-  const validSel = selPos >= 0 && selPos < crystal.positions.length;
-
-  const analysis = useMemo(
-    () => (validSel ? analyzeSite(crystal, ox, bonds, selPos, { kind: radiusKind, hostSite, hostSpin }) : null),
-    [validSel, crystal, ox, bonds, selPos, radiusKind, hostSite, hostSpin],
-  );
-
-  const scene = useMemo(() => buildScene(crystal, bonds, view, validSel ? selectedKey : null), [crystal, bonds, view, selectedKey, validSel]);
-
-  // ---------- file handling ----------
-  const openText = useCallback((text: string, name: string) => {
-    try {
-      const l = loadText(text, name);
-      setLoaded(l);
-      setError(null);
-      setSampleId("");
-    } catch (e) {
-      setError(`${name} を読み込めませんでした: ${(e as Error).message}`);
+  // ---------- opening files ----------
+  const addDocs = useCallback((made: Doc[], activate = true) => {
+    if (!made.length) return;
+    setDocs((ds) => [...ds, ...made]);
+    if (activate) {
+      setActiveId(made[made.length - 1].id);
+      setMode((m) => (made.length > 1 && m === "compare" ? m : "structure"));
     }
   }, []);
 
-  const openFile = useCallback(
-    (f: File) => {
-      f.text().then((t) => openText(t, f.name));
+  const openFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const errs: string[] = [];
+      const made: Doc[] = [];
+      let current = docs;
+      for (const f of Array.from(files)) {
+        try {
+          const text = await f.text();
+          const blocks = blocksWithAtoms(text);
+          if (!blocks.length) throw new Error("原子座標を含むデータブロックが見つかりません（_atom_site_fract_x が必要です）。");
+          const n = Math.min(blocks.length, MAX_BLOCKS_PER_FILE);
+          for (let i = 0; i < n; i++) {
+            try {
+              const d = createDoc(blocks, f.name, i, nextSlot(current));
+              made.push(d);
+              current = [...current, d];
+            } catch (e) {
+              errs.push(`${f.name} の data_${blocks[i].name}: ${(e as Error).message}`);
+            }
+          }
+          if (blocks.length > MAX_BLOCKS_PER_FILE) errs.push(`${f.name} はデータブロックが ${blocks.length} 個あるため、先頭の ${MAX_BLOCKS_PER_FILE} 個だけ開きました。`);
+        } catch (e) {
+          errs.push(`${f.name} を読み込めませんでした: ${(e as Error).message}`);
+        }
+      }
+      addDocs(made);
+      setBanner(errs.length ? errs.join(" / ") : null);
     },
-    [openText],
+    [docs, addDocs],
   );
+
+  const addSample = (id: string) => {
+    if (id === "__all") {
+      const made: Doc[] = [];
+      let current = docs;
+      for (const s of SAMPLES) {
+        if (docs.some((d) => d.fileName === `${s.id}.cif`)) continue;
+        const d = sampleDoc(s.id, current);
+        if (d) {
+          made.push(d);
+          current = [...current, d];
+        }
+      }
+      addDocs(made, mode !== "compare");
+      return;
+    }
+    const d = sampleDoc(id, docs);
+    if (d) addDocs([d]);
+  };
+
+  const closeDoc = (id: string) => {
+    setDocs((ds) => {
+      const i = ds.findIndex((d) => d.id === id);
+      const next = ds.filter((d) => d.id !== id);
+      if (id === activeId) setActiveId(next[Math.min(i, next.length - 1)]?.id ?? null);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const over = (e: DragEvent) => {
@@ -155,8 +170,7 @@ export default function App() {
     const drop = (e: DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      const f = e.dataTransfer?.files?.[0];
-      if (f) openFile(f);
+      if (e.dataTransfer?.files?.length) openFiles(e.dataTransfer.files);
     };
     window.addEventListener("dragover", over);
     window.addEventListener("dragleave", leave);
@@ -166,92 +180,7 @@ export default function App() {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [openFile]);
-
-  const chooseSample = (id: string) => {
-    const s = SAMPLES.find((x) => x.id === id);
-    if (!s) return;
-    setSampleId(id);
-    setLoaded(loadText(s.text, `${s.id}.cif`, 0, s.site));
-    setError(null);
-  };
-
-  const chooseBlock = (idx: number) => {
-    try {
-      const crystal2 = crystalFromCif(loaded.blocks[idx]);
-      setLoaded({ ...loaded, id: `${loaded.fileName}#${idx}#${++loadCounter}`, blockIdx: idx, crystal: crystal2, preferSite: undefined });
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  // ---------- cutoff editing from the site panel ----------
-  const setSiteCutoff = useCallback(
-    (cut: number) => {
-      if (!analysis) return;
-      const c = Math.round(cut * 1000) / 1000;
-      setBondSettings((bs) => {
-        if (cutScope === "site") return { ...bs, siteOverride: { ...bs.siteOverride, [analysis.group]: c } };
-        const pairs = { ...bs.pairs };
-        const P = crystal.positions[analysis.pos];
-        const hostEls = new Set(P.occupants.map((o) => crystal.sites[o.site].element));
-        const ligEls = new Set<string>();
-        for (const nb of bonds.eligible[analysis.pos]) for (const o of crystal.positions[nb.j].occupants) ligEls.add(crystal.sites[o.site].element);
-        for (const h of hostEls)
-          for (const l of ligEls) {
-            const k = pairKey(h, l);
-            if (pairs[k]) pairs[k] = { ...pairs[k], max: c };
-          }
-        const so = { ...bs.siteOverride };
-        delete so[analysis.group];
-        return { ...bs, pairs, siteOverride: so };
-      });
-    },
-    [analysis, cutScope, crystal, bonds],
-  );
-
-  const clearSiteOverride = useCallback(() => {
-    if (!analysis) return;
-    setBondSettings((bs) => {
-      const so = { ...bs.siteOverride };
-      delete so[analysis.group];
-      return { ...bs, siteOverride: so };
-    });
-  }, [analysis]);
-
-  const describe = useCallback(
-    (key: string) => {
-      const { pos, t } = parseAtomKey(key);
-      const p = crystal.positions[pos];
-      if (!p) return "";
-      const ions = p.occupants.map((o) => ionLabel(crystal.sites[o.site].element, ox[crystal.sites[o.site].label])).join(" / ");
-      const f = p.frac.map((v, i) => (v + t[i]).toFixed(3)).join(", ");
-      return `${p.group}  ${ions}  (${f})  CN ${bonds.bonded[pos].length}`;
-    },
-    [crystal, ox, bonds],
-  );
-
-  const onPick = useCallback(
-    (key: string) => {
-      const prev = selectedKey ? parseAtomKey(selectedKey).pos : -1;
-      if (prev < 0 || crystal.positions[prev]?.group !== crystal.positions[parseAtomKey(key).pos]?.group) {
-        setHostSite(undefined);
-        setHostSpin("");
-      }
-      setSelectedKey(key);
-    },
-    [selectedKey, crystal],
-  );
-
-  const selectGroup = (groupKey: string) => {
-    const g = crystal.groups.find((x) => x.key === groupKey);
-    if (!g) return;
-    setHostSite(undefined);
-    setHostSpin("");
-    setSelectedKey(atomKey(g.positions[0], [0, 0, 0]));
-  };
-
-  const { formula } = formulaString(crystal);
+  }, [openFiles]);
 
   return (
     <div className="app">
@@ -266,7 +195,7 @@ export default function App() {
           </span>
           <div>
             <h1>Crystal Site Matcher</h1>
-            <p className="brand-sub">配位多面体とシャノン半径で置換イオンを見積もる</p>
+            <p className="brand-sub">配位多面体・シャノン半径・イオン伝導の特徴量で構造を読む</p>
           </div>
         </div>
         <div className="file-controls">
@@ -277,120 +206,87 @@ export default function App() {
             ref={fileRef}
             type="file"
             accept=".cif,.mcif,.txt,chemical/x-cif"
+            multiple
             hidden
             id="cif-input"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) openFile(f);
+              if (e.target.files?.length) openFiles(e.target.files);
               e.target.value = "";
             }}
           />
-          <label className="field-inline" htmlFor="sample-select">
-            <span>サンプル</span>
-            <select id="sample-select" value={sampleId} onChange={(e) => chooseSample(e.target.value)}>
-              {sampleId === "" && <option value="">（読み込んだファイル）</option>}
-              {SAMPLES.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <span className="muted small hide-narrow">複数ファイル・複数データブロックに対応。ドラッグ＆ドロップでも開けます。</span>
         </div>
       </header>
 
-      {error && (
+      {banner && (
         <div className="banner banner-error" role="alert">
-          <span>{error}</span>
-          <button className="btn btn-ghost" onClick={() => setError(null)}>
+          <span>{banner}</span>
+          <button className="btn btn-ghost" onClick={() => setBanner(null)}>
             閉じる
           </button>
         </div>
       )}
 
-      <main className="layout">
-        <section className="stage" aria-label="結晶構造の3D表示">
-          <div className="stage-head">
-            <div className="stage-title">
-              <strong>{crystal.title}</strong>
-              <span className="mono">{formula}</span>
-              <span className="tag">{crystal.spaceGroup.symbol}</span>
-              <span className="muted small">{loaded.fileName}</span>
-            </div>
-          </div>
-          <div className="stage-body">
-            <Viewer spec={scene} structureId={`${loaded.id}|${view.supercell.join("x")}`} viewCmd={viewCmd} onPick={onPick} describe={describe} />
-            <ViewControls
-              view={view}
-              setView={setView}
-              onViewDir={(dir) => setViewCmd((c) => ({ dir, n: (c?.n ?? 0) + 1 }))}
-              crystal={crystal}
-              ox={ox}
-            />
-            <p className="stage-hint">ドラッグで回転・右ドラッグで移動・ホイールで拡大。原子をクリックするとそのサイトを解析します。</p>
-          </div>
-        </section>
-
-        <aside className="panel">
-          <nav className="tabs" role="tablist">
-            {(
-              [
-                ["site", "サイト解析"],
-                ["subst", "置換候補"],
-                ["struct", "構造と結合"],
-              ] as [Tab, string][]
-            ).map(([k, label]) => (
-              <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "is-active" : ""}`} onClick={() => setTab(k)} id={`tab-${k}`}>
-                {label}
-              </button>
-            ))}
-          </nav>
-          <div className="panel-body" ref={panelRef}>
-            {tab === "site" && (
-              <SitePanel
-                crystal={crystal}
-                ox={ox}
-                bonds={bonds}
-                bondSettings={bondSettings}
-                analysis={analysis}
-                hostSite={hostSite}
-                setHostSite={setHostSite}
-                hostSpin={hostSpin}
-                setHostSpin={setHostSpin}
-                radiusKind={radiusKind}
-                setRadiusKind={setRadiusKind}
-                cutScope={cutScope}
-                setCutScope={setCutScope}
-                onCutoff={setSiteCutoff}
-                onClearOverride={clearSiteOverride}
-                onSelectGroup={selectGroup}
-                rmax={rmax}
-                goSubst={() => setTab("subst")}
-              />
-            )}
-            {tab === "subst" && <SubstitutionPanel analysis={analysis} crystal={crystal} onSelectGroup={selectGroup} />}
-            {tab === "struct" && (
-              <StructurePanel
-                crystal={crystal}
-                loaded={{ fileName: loaded.fileName, blocks: loaded.blocks.map((b) => b.name), blockIdx: loaded.blockIdx }}
-                onBlock={chooseBlock}
-                ox={ox}
-                setOx={setOx}
-                oxGuessed={initialOx.guessed}
-                bondSettings={bondSettings}
-                setBondSettings={setBondSettings}
-                bonds={bonds}
-                onSelectGroup={selectGroup}
-                selectedGroup={analysis?.group ?? null}
-              />
-            )}
-          </div>
-        </aside>
-      </main>
+      <div className="workspace">
+        <Sidebar
+          docs={docs}
+          activeId={active?.id ?? null}
+          mode={mode}
+          excluded={excluded}
+          onSelect={(id) => {
+            setActiveId(id);
+            setMode("structure");
+          }}
+          onClose={closeDoc}
+          onToggleCompare={(id) =>
+            setExcluded((s) => {
+              const n = new Set(s);
+              if (n.has(id)) n.delete(id);
+              else n.add(id);
+              return n;
+            })
+          }
+          onMode={setMode}
+          onOpen={() => fileRef.current?.click()}
+          onAddSample={addSample}
+        />
+        {mode === "compare" ? (
+          <CompareView
+            docs={compareDocs}
+            allCount={docs.length}
+            entries={Object.fromEntries(docs.map((d) => [d.id, freshEntry(d)]))}
+            errors={errors}
+            onOpenDoc={(id) => {
+              setActiveId(id);
+              setMode("structure");
+              setTab("feat");
+            }}
+          />
+        ) : active ? (
+          <StructureView
+            key={active.id}
+            doc={active}
+            update={updateActive}
+            onReplace={(nd) => setDocs((ds) => ds.map((d) => (d.id === nd.id ? nd : d)))}
+            tab={tab}
+            setTab={setTab}
+            entry={freshEntry(active)}
+            featError={errors[active.id]}
+          />
+        ) : (
+          <main className="empty">
+            <h2>構造が開かれていません</h2>
+            <p className="muted">CIF ファイルを開くかドロップするか、左下のサンプルから追加してください。</p>
+            <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
+              CIF を開く
+            </button>
+          </main>
+        )}
+      </div>
 
       {dragging && (
         <div className="dropzone" aria-hidden="true">
-          <div>CIF ファイルをドロップして読み込む</div>
+          <div>CIF ファイルをドロップして開く（複数可）</div>
         </div>
       )}
     </div>

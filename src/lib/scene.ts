@@ -16,6 +16,9 @@ export interface ViewOptions {
   polyOpacity: number;
   hiddenElements: string[];
   polyElements: string[]; // centre elements whose polyhedra are drawn in "elements" mode
+  showHops: boolean; // migration hops between mobile-ion sites
+  showIso: boolean; // BVSE isosurface of the mobile ion
+  isoLevel: number | null; // ΔE (eV) above the minimum; null = automatic
 }
 
 export const DEFAULT_VIEW: ViewOptions = {
@@ -29,6 +32,9 @@ export const DEFAULT_VIEW: ViewOptions = {
   polyOpacity: 0.45,
   hiddenElements: [],
   polyElements: [],
+  showHops: false,
+  showIso: false,
+  isoLevel: null,
 };
 
 export interface SceneAtom {
@@ -73,6 +79,35 @@ export interface SceneSpec {
   axes: { a: Vec3; b: Vec3; c: Vec3 };
   bondRadius: number;
   polyOpacity: number;
+  hopLines: { a: Vec3; b: Vec3; color: [number, number, number] }[];
+  iso: IsoSpec | null;
+}
+
+export interface IsoSpec {
+  field: Float32Array; // values on an n[0]×n[1]×n[2] fractional grid, index i + n0·(j + n1·k)
+  n: Vec3;
+  level: number;
+  color: [number, number, number];
+  axes: [Vec3, Vec3, Vec3];
+  supercell: Vec3;
+}
+
+export interface SceneExtras {
+  hops?: { a: number; b: number; t: Vec3; rb: number }[];
+  iso?: { field: Float32Array; n: Vec3; level: number; color: [number, number, number] } | null;
+}
+
+/** Bottleneck colour scale, narrow → wide: red → amber → green (legible on light and dark backgrounds). */
+const RAMP: [number, number, number][] = [
+  [227, 73, 72],
+  [237, 161, 0],
+  [27, 175, 122],
+];
+function ramp(t: number): [number, number, number] {
+  const x = Math.max(0, Math.min(1, t)) * (RAMP.length - 1);
+  const i = Math.min(RAMP.length - 2, Math.floor(x));
+  const f = x - i;
+  return [0, 1, 2].map((c) => Math.round(RAMP[i][c] + (RAMP[i + 1][c] - RAMP[i][c]) * f)) as [number, number, number];
 }
 
 export const atomKey = (pos: number, t: Vec3) => `${pos}|${t[0]},${t[1]},${t[2]}`;
@@ -99,6 +134,7 @@ export function buildScene(
   bonds: BondTable,
   opts: ViewOptions,
   selectedKey: string | null,
+  extras: SceneExtras = {},
 ): SceneSpec {
   const L = cr.lattice;
   const [na, nb, nc] = opts.supercell;
@@ -214,6 +250,26 @@ export function buildScene(
         }
   }
 
+  // 6) migration hops between mobile sites, replicated over the displayed cells
+  const hopLines: SceneSpec["hopLines"] = [];
+  if (extras.hops && extras.hops.length) {
+    const rbs = extras.hops.map((h) => h.rb);
+    const lo = Math.min(...rbs),
+      hi = Math.max(...rbs);
+    for (const h of extras.hops) {
+      const col = ramp(hi > lo ? (h.rb - lo) / (hi - lo) : 1);
+      const fa = cr.positions[h.a].frac,
+        fb = cr.positions[h.b].frac;
+      for (let i = 0; i < na; i++)
+        for (let j = 0; j < nb; j++)
+          for (let k = 0; k < nc; k++) {
+            const a = toCart(L, [fa[0] + i, fa[1] + j, fa[2] + k]);
+            const b = toCart(L, [fb[0] + h.t[0] + i, fb[1] + h.t[1] + j, fb[2] + h.t[2] + k]);
+            hopLines.push({ a, b, color: col });
+          }
+    }
+  }
+
   const center = toCart(L, [na / 2, nb / 2, nc / 2]);
   let extent = 0;
   for (const a of atoms.values()) {
@@ -233,5 +289,7 @@ export function buildScene(
     axes: { a: L.A, b: L.B, c: L.C },
     bondRadius: opts.bondRadius,
     polyOpacity: opts.polyOpacity,
+    hopLines,
+    iso: extras.iso ? { ...extras.iso, axes: [L.A, L.B, L.C], supercell: opts.supercell } : null,
   };
 }

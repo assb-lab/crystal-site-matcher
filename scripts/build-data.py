@@ -2,7 +2,7 @@
 """Regenerate src/data/*.json from pymatgen's bundled data files.
 
 Usage:
-  python3 scripts/build-data.py <pymatgen-repo> <pymatgen-core-repo>
+  python3 scripts/build-data.py <pymatgen-repo> <pymatgen-core-repo> [<BVlain-repo>]
 
 Sources (all redistributed under pymatgen's MIT licence):
   - Shannon (1976) effective ionic / crystal radii : pymatgen/dev_scripts/periodic_table_resources/Shannon_Radii.csv
@@ -12,10 +12,15 @@ Sources (all redistributed under pymatgen's MIT licence):
   - VESTA element colours                          : pymatgen-core/src/pymatgen/core/ElementColorSchemes.yaml
   - VESTA default bond cutoffs                     : pymatgen/src/pymatgen/analysis/vesta_cutoffs.yaml
   - Ideal coordination polyhedra (chemenv)         : pymatgen/src/pymatgen/analysis/chemenv/coordination_environments/coordination_geometries_files
+  - X-ray atomic scattering factors                : pymatgen/src/pymatgen/analysis/diffraction/atomic_scattering_params.json
+  - BVSE (softBV) Morse parameters, principal quantum numbers, softBV covalent radii:
+        BVlain (MIT, A. D. Dembitskiy) bvlain/data/*.pkl — originally from
+        Chen & Adams, IUCrJ 4 (2017) 614 and Chen, Wong & Adams, Acta Cryst. B75 (2019) 18
 """
 import csv, gzip, json, os, re, sys
 
 pmg, core = sys.argv[1], sys.argv[2]
+bvlain = sys.argv[3] if len(sys.argv) > 3 else None
 out = os.path.join(os.path.dirname(__file__), "..", "src", "data")
 os.makedirs(out, exist_ok=True)
 
@@ -85,6 +90,7 @@ for sym, d in pt.items():
         "ox": d.get("Common oxidation states") or [],
         "icsd": d.get("ICSD oxidation states") or [],
         "col": colors.get(sym, [200, 200, 200]),
+        "m": num(d.get("Atomic mass")),
     }
 json.dump(els, open(os.path.join(out, "elements.json"), "w"), separators=(",", ":"))
 print("elements", len(els))
@@ -135,3 +141,34 @@ for fn in sorted(os.listdir(gdir)):
                   "pts": [[round(p[i] - c[i], 6) for i in range(3)] for p in pts]})
 json.dump(polys, open(os.path.join(out, "ideal_polyhedra.json"), "w"), separators=(",", ":"))
 print("ideal polyhedra", len(polys), sorted({(p['cn'], p['sym']) for p in polys}))
+
+# ---------- X-ray scattering ----------
+xs = json.load(open(os.path.join(pmg, "src/pymatgen/analysis/diffraction/atomic_scattering_params.json")))
+json.dump(xs, open(os.path.join(out, "xray_scattering.json"), "w"), separators=(",", ":"))
+print("xray scattering", len(xs))
+
+# ---------- BVSE parameters (BVlain / softBV) ----------
+if bvlain:
+    import pickle
+    dd = os.path.join(bvlain, "bvlain", "data")
+    Z2S = {v["Z"]: k for k, v in els.items()}
+    def conv(tbl):
+        res = {}
+        for zm, byq in tbl.items():
+            for qm, partners in byq.items():
+                key = f"{Z2S[int(zm)]}{int(qm):+d}"
+                for zp, byq2 in partners.items():
+                    for qp, prm in byq2.items():
+                        res.setdefault(key, {})[f"{Z2S[int(zp)]}{int(qp):+d}"] = [
+                            round(float(prm["r_min"]), 5), round(float(prm["alpha"]), 5), round(float(prm["d0"]), 5)]
+        return res
+    cat = conv(pickle.load(open(os.path.join(dd, "cation.pkl"), "rb")))
+    ani = conv(pickle.load(open(os.path.join(dd, "anion.pkl"), "rb")))
+    qn = {Z2S[int(z)]: int(n) for z, n in pickle.load(open(os.path.join(dd, "quantum_n.pkl"), "rb")).items() if int(z) in Z2S}
+    rc = {}
+    for z, byq in pickle.load(open(os.path.join(dd, "covalent_radii_softvb.pkl"), "rb")).items():
+        if int(z) in Z2S:
+            for q, r in byq.items():
+                rc[f"{Z2S[int(z)]}{int(q):+d}"] = float(r)
+    json.dump({"mobile": {**cat, **ani}, "n": qn, "rc": rc}, open(os.path.join(out, "bvse.json"), "w"), separators=(",", ":"))
+    print("bvse mobile ions", sorted({**cat, **ani}.keys()))

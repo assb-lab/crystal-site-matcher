@@ -29,11 +29,16 @@ function shannonVI(el: string, ox: number): number | null {
 export function defaultPairRule(a: string, oxA: number, b: string, oxB: number): PairRule {
   const key = pairKey(a, b);
   const v = VESTA_CUTOFFS[key];
-  if (v) return { max: v, def: v, on: true, source: "VESTA" };
   const ra = shannonVI(a, oxA),
     rb = shannonVI(b, oxB);
-  if (ra !== null && rb !== null && oxA * oxB < 0) {
-    const m = +(1.25 * (ra + rb)).toFixed(2);
+  const ionic = ra !== null && rb !== null && oxA * oxB < 0;
+  if (v) {
+    // A few VESTA defaults are shorter than real bonds (e.g. Ag–I 2.54 Å vs 2.83 Å); never go below 1.1 × the Shannon sum.
+    const floor = ionic ? +(1.1 * ((ra as number) + (rb as number))).toFixed(2) : 0;
+    return floor > v ? { max: floor, def: floor, on: true, source: "Shannon" } : { max: v, def: v, on: true, source: "VESTA" };
+  }
+  if (ionic) {
+    const m = +(1.25 * ((ra as number) + (rb as number))).toFixed(2);
     return { max: m, def: m, on: true, source: "Shannon" };
   }
   const m = +(1.15 * ((ELEMENTS[a]?.r ?? 1.4) + (ELEMENTS[b]?.r ?? 1.4))).toFixed(2);
