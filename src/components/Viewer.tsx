@@ -104,7 +104,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
     const controls = new TrackballControls(camera, renderer.domElement);
     controls.rotateSpeed = 3.0;
     controls.zoomSpeed = 1.4;
-    controls.panSpeed = 0.9;
+    controls.panSpeed = 0.45;
     controls.staticMoving = false;
     controls.dynamicDampingFactor = 0.18;
 
