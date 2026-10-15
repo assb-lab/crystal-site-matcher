@@ -145,14 +145,23 @@ const wrap = (x: number) => {
   return w > 1 - 1e-7 ? 0 : w;
 };
 
-/** Shortest Cartesian distance between two fractional points under PBC. */
-function pbcDist(L: Lattice, f1: Vec3, f2: Vec3): number {
-  const d: Vec3 = [f1[0] - f2[0], f1[1] - f2[1], f1[2] - f2[2]];
-  let best = Infinity;
-  for (let i = -1; i <= 1; i++)
-    for (let j = -1; j <= 1; j++)
-      for (let k = -1; k <= 1; k++) {
-        const r = norm(toCart(L, [d[0] - Math.round(d[0]) + i, d[1] - Math.round(d[1]) + j, d[2] - Math.round(d[2]) + k]));
+/**
+ * Shortest Cartesian distance between two fractional points under periodic boundaries, for any valid cell.
+ * The image at the reduced difference d gives an upper bound R; an image d + n that is shorter has
+ * |(d + n)_k| = |r · a*_k| ≤ R |a*_k| along each reciprocal vector, which bounds the integers n_k to search
+ * (in a strongly oblique cell, translations beyond ±1 can give the shortest image).
+ */
+export function pbcDist(L: Lattice, f1: Vec3, f2: Vec3): number {
+  const d = [0, 1, 2].map((k) => f1[k] - f2[k] - Math.round(f1[k] - f2[k])) as Vec3;
+  const R = norm(toCart(L, d));
+  let best = R;
+  const lo = [0, 1, 2].map((k) => Math.ceil(-R * L.recip[k] - d[k] - 1e-9));
+  const hi = [0, 1, 2].map((k) => Math.floor(R * L.recip[k] - d[k] + 1e-9));
+  for (let i = lo[0]; i <= hi[0]; i++)
+    for (let j = lo[1]; j <= hi[1]; j++)
+      for (let k = lo[2]; k <= hi[2]; k++) {
+        if (!i && !j && !k) continue;
+        const r = norm(toCart(L, [d[0] + i, d[1] + j, d[2] + k]));
         if (r < best) best = r;
       }
   return best;

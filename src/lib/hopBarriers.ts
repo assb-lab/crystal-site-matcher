@@ -4,9 +4,8 @@
 
 import type { FrameworkField, GridResult } from "./bvse";
 import { type Hop, hopClasses } from "./features";
-import { pbcDist } from "./landscape";
 import { PeriodicUnionFind } from "./percolation";
-import { Crystal, Vec3, toCart } from "./structure";
+import { Crystal, Vec3, pbcDist, toCart } from "./structure";
 
 /** Saddles closer than this (Å, periodic) are one bottleneck window when testing the bypass. */
 export const BYPASS_WINDOW = 0.5;
@@ -240,7 +239,7 @@ export function hopBarrierFeatureValues(cr: Crystal, hops: Hop[], barriers: (Hop
     const candidates = hopClasses(cr, hops).filter((c) => c.members.some((i) => barriers[i] && Math.abs(barriers[i]!.Esad - threshold) <= 1e-9));
     for (const critical of candidates) {
       const windows = critical.members.flatMap((i) => (barriers[i] ? [fracOf(barriers[i]!.saddle)] : []));
-      const rest = networkThresholds(ok.filter(({ b }) => !windows.some((w) => pbcDist(cr, fracOf(b.saddle), w) <= BYPASS_WINDOW)));
+      const rest = networkThresholds(ok.filter(({ b }) => !windows.some((w) => pbcDist(L, fracOf(b.saddle), w) <= BYPASS_WINDOW)));
       const result = { dim: rest.rank, E: rest.dim[D - 1] };
       if (!bypass || result.dim < bypass.dim || (result.dim === bypass.dim && (result.E ?? Infinity) > (bypass.E ?? Infinity))) bypass = result;
     }
