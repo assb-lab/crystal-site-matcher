@@ -32,7 +32,7 @@ interface Ctx {
   gizmoArrows: THREE.Group;
   cellMat: THREE.LineBasicMaterial;
   haloMat: THREE.MeshBasicMaterial;
-  pathMats: LineMaterial[]; // dashed hop path: animated, sized to the canvas, recoloured with the theme
+  pathMats: LineMaterial[]; // resize both band and dashes; animate and recolour only dashes
   labels: { el: HTMLDivElement; pos: THREE.Vector3 }[];
   axisLabels: { el: HTMLSpanElement; dir: THREE.Vector3 }[];
   extent: number;
@@ -44,6 +44,11 @@ const FOV = 24;
 const GIZMO = 92;
 /** Speed of the dashes along a highlighted hop path (Å/s). */
 const DASH_SPEED = 0.9;
+
+/** Preserve the band's bottleneck colour when the foreground colour changes. */
+export function applyHopPathTheme(materials: LineMaterial[], ink: THREE.Color) {
+  for (const m of materials) if (m.dashed) m.color.copy(ink);
+}
 
 function srgb(c: [number, number, number], k = 1) {
   return new THREE.Color().setRGB((c[0] / 255) * k, (c[1] / 255) * k, (c[2] / 255) * k, THREE.SRGBColorSpace);
@@ -138,7 +143,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
       renderer.setClearColor(new THREE.Color(cssVar("--viewer-bg", "#f7f8fa")), 1);
       cellMat.color = new THREE.Color(cssVar("--cell-line", "#3a4150"));
       haloMat.color = new THREE.Color(cssVar("--select", "#ffb000"));
-      for (const m of ctx.pathMats) m.color = new THREE.Color(cssVar("--ink", "#1a1f2b"));
+      applyHopPathTheme(ctx.pathMats, new THREE.Color(cssVar("--ink", "#1a1f2b")));
     };
     applyTheme();
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -168,7 +173,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
     const tick = () => {
       ctx.raf = requestAnimationFrame(tick);
       const now = performance.now();
-      if (!still.matches) for (const m of ctx.pathMats) m.dashOffset -= (DASH_SPEED * (now - last)) / 1000;
+      if (!still.matches) for (const m of ctx.pathMats) if (m.dashed) m.dashOffset -= (DASH_SPEED * (now - last)) / 1000;
       last = now;
       controls.update();
       const w = host.clientWidth,

@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'vite';
+import { Color } from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
 const server = await createServer({ server: { middlewareMode: true }, logLevel: 'silent' });
 try {
@@ -90,6 +92,22 @@ try {
     const hidden = sc.buildScene(doc.crystal, bonds, { ...doc.view, hiddenElements: ['Li'] }, null, { selHops: sel });
     assert.ok(!hidden.atoms.some((a) => doc.crystal.sites[doc.crystal.positions[a.pos].main].element === 'Li'));
     assert.equal(hidden.hopPath.segs.length, sel.length);
+  }
+  // Changing themes changes the foreground dashes, never the bottleneck-coloured band (#21).
+  {
+    const { applyHopPathTheme } = await server.ssrLoadModule('/src/components/Viewer.tsx');
+    const band = new LineMaterial({ color: 0x1baf7a, linewidth: 7 });
+    const dash = new LineMaterial({ color: 0x1a1f2b, dashed: true, linewidth: 3 });
+    try {
+      for (const ink of [0xe5e8ef, 0x1a1f2b, 0xe5e8ef]) {
+        applyHopPathTheme([band, dash], new Color(ink));
+        assert.equal(band.color.getHex(), 0x1baf7a, 'band retains the bottleneck colour across theme changes');
+        assert.equal(dash.color.getHex(), ink, 'dashes follow the current foreground colour');
+      }
+    } finally {
+      band.dispose();
+      dash.dispose();
+    }
   }
 } finally {
   await server.close();
