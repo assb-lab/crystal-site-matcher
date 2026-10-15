@@ -6,7 +6,7 @@ import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
-import type { SceneSpec } from "../lib/scene";
+import { MINIMUM_COLOR, MINIMUM_SITE_COLOR, type SceneSpec } from "../lib/scene";
 import type { Vec3 } from "../lib/structure";
 
 export type ViewDir = "a" | "b" | "c" | "a*" | "b*" | "c*" | "reset";
@@ -509,6 +509,25 @@ export function populateContent(
     neck.computeBoundingSphere();
     neck.renderOrder = 8;
     content.add(neck);
+  }
+
+  // BVSE minima: small markers drawn over everything (empty candidate sites larger and coloured)
+  for (const occupied of [true, false]) {
+    const ms = spec.minima.filter((m) => m.occupied === occupied);
+    if (!ms.length) continue;
+    const mat = occupied
+      ? new THREE.MeshBasicMaterial({ color: srgb(MINIMUM_SITE_COLOR), transparent: true, opacity: 0.75, depthTest: false })
+      : new THREE.MeshBasicMaterial({ color: srgb(MINIMUM_COLOR), depthTest: false });
+    const mm = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 16, 12), mat, ms.length);
+    const r = occupied ? 0.12 : 0.2;
+    ms.forEach((m, i) => {
+      m4.compose(new THREE.Vector3(...m.xyz), new THREE.Quaternion(), new THREE.Vector3(r, r, r));
+      mm.setMatrixAt(i, m4);
+    });
+    mm.instanceMatrix.needsUpdate = true;
+    mm.computeBoundingSphere();
+    mm.renderOrder = 9;
+    content.add(mm);
   }
 
   // BVSE isosurface

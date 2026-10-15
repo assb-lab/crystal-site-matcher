@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import type { Doc } from "../lib/doc";
 import type { FeatureEntry } from "../lib/useFeatures";
 import { FEATURE_DEFS, FEATURE_BY_KEY, GROUPS, hopClasses } from "../lib/features";
-import { hopColor } from "../lib/scene";
+import { MINIMUM_COLOR, MINIMUM_SITE_COLOR, hopColor } from "../lib/scene";
+import { INTERSTITIAL_E_MAX, minimumClasses } from "../lib/landscape";
 import { bvseSupported } from "../lib/bvse";
 import { shannonRadius } from "../lib/analysis";
 import { fmt, ionLabel, rgbCss } from "../lib/format";
@@ -165,6 +166,51 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                   <p className="muted small">
                     {t("feat.siteE")} {[...new Map(entry.siteE.map((s) => [s.group, s.E])).entries()].map(([g, e]) => `${g} ${Math.abs(e) < 0.005 ? "0.00" : e.toFixed(2)} eV`).join(t("list.sep"))}
                   </p>
+                )}
+                {entry.minima && (
+                  <>
+                    <div className="card-head">
+                      <h3>{t("feat.minima", { n: entry.minima.length, k: entry.minima.filter((m) => !m.occupied).length })}</h3>
+                      <label className="checkline" htmlFor="show-minima">
+                        <input id="show-minima" type="checkbox" checked={doc.view.showMinima} onChange={(e) => setView({ showMinima: e.target.checked })} /> {t("feat.show3D")}
+                      </label>
+                      <span className="small muted">
+                        <span className="dot" style={{ background: rgbCss(MINIMUM_COLOR) }} />
+                        {t("feat.minimaEmpty")} <span className="dot" style={{ background: rgbCss(MINIMUM_SITE_COLOR) }} />
+                        {t("feat.minimaSite")}
+                      </span>
+                    </div>
+                    <div className="table-wrap">
+                      <table className="data compact" id="minima">
+                        <thead>
+                          <tr>
+                            <th>{t("feat.minimaKind")}</th>
+                            <th className="num">ΔE (eV)</th>
+                            <th className="num">×</th>
+                            <th>{t("feat.minimaNearest")}</th>
+                            <th className="num">λ (eV/Å²)</th>
+                            <th className="num">x, y, z</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {minimumClasses(entry.minima).map((c) => (
+                            <tr key={c.key} className={c.occupied ? "" : "is-host"}>
+                              <td>
+                                <span className="dot" style={{ background: rgbCss(c.occupied ? MINIMUM_SITE_COLOR : MINIMUM_COLOR) }} />
+                                {c.occupied ? t("feat.minimaAt", { site: c.nearest?.group ?? "" }) : t("feat.minimaEmpty")}
+                              </td>
+                              <td className="num mono">{Math.abs(c.E) < 0.005 ? "0.00" : c.E.toFixed(2)}</td>
+                              <td className="num mono">{c.count}</td>
+                              <td className="mono">{c.nearest ? `${c.nearest.group} ${c.nearest.d.toFixed(2)} Å` : "—"}</td>
+                              <td className="num mono">{c.curvature.map((x) => x.toFixed(1)).join(" / ")}</td>
+                              <td className="num mono">{c.frac.map((x) => x.toFixed(3)).join(", ")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="muted small">{t("feat.minimaNote", { e: INTERSTITIAL_E_MAX.toFixed(1) })}</p>
+                  </>
                 )}
               </>
             ) : (

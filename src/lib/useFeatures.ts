@@ -6,6 +6,7 @@ import { FeatureValue, StaticFeatures } from "./features";
 import { GridResult } from "./bvse";
 import { gridStage, hasMobile, staticStage } from "./pipeline";
 import { XrdPattern, simulateXrd } from "./xrd";
+import type { EnergyMinimum } from "./landscape";
 
 export type GridStatus = "pending" | "running" | "done" | "none" | "error";
 
@@ -18,6 +19,7 @@ export interface FeatureEntry {
   gridError?: string;
   progress: number;
   siteE: { pos: number; group: string; E: number }[] | null;
+  minima: EnergyMinimum[] | null;
   values: Record<string, FeatureValue>;
 }
 
@@ -64,7 +66,7 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
           const xrd = simulateXrd(job.crystal);
           setEntries((e) => ({
             ...e,
-            [job.id]: { sig, static: st, xrd, grid: null, gridStatus: hasMobile(job) ? "pending" : "none", progress: 0, siteE: null, values: { ...st.values } },
+            [job.id]: { sig, static: st, xrd, grid: null, gridStatus: hasMobile(job) ? "pending" : "none", progress: 0, siteE: null, minima: null, values: { ...st.values } },
           }));
           return;
         }
@@ -83,10 +85,10 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
           stale,
         );
         if (!res || stale()) return;
-        const { grid, siteE, values: vals } = res;
+        const { grid, siteE, minima, values: vals } = res;
         setEntries((e) =>
           e[job.id] && e[job.id].sig === sig
-            ? { ...e, [job.id]: { ...e[job.id], grid, siteE, gridStatus: "done", progress: 1, values: { ...e[job.id].values, ...vals } } }
+            ? { ...e, [job.id]: { ...e[job.id], grid, siteE, minima, gridStatus: "done", progress: 1, values: { ...e[job.id].values, ...vals } } }
             : e,
         );
       } catch (err) {

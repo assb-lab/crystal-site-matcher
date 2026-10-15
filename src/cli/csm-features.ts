@@ -6,7 +6,7 @@ import { availableParallelism } from "node:os";
 import { parseArgs } from "node:util";
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 import { DEFAULT_GRID_RES, DEFAULT_HOP_CUTOFF } from "../lib/pipeline";
-import { ExtractOptions, ExtractResult, delimited, extractFromText, featureList, featureRows, hopRows, toJson } from "./extract";
+import { ExtractOptions, ExtractResult, delimited, extractFromText, featureList, featureRows, hopRows, siteRows, toJson } from "./extract";
 
 const VERSION = typeof __CSM_VERSION__ === "string" ? __CSM_VERSION__ : "dev";
 
@@ -16,7 +16,8 @@ Usage: csm-features [options] <file.cif | directory> ...
 
 Each data block with atomic coordinates becomes one row (CSV/TSV) or one entry (JSON).
 Mobile-ion hops (distance and bottleneck radius) are written for every structure with a
-mobile ion. The mobile ion is chosen as in the app: the first of Li, Na, K, Ag, Cu, Mg,
+mobile ion, and, with the BVSE grid, its stable sites (local minima of the landscape,
+including empty candidate sites away from the CIF positions). The mobile ion is chosen as in the app: the first of Li, Na, K, Ag, Cu, Mg,
 Zn, Ca, Rb, Cs, H (as a cation), F, O (as an anion) present in the structure.
 
 Output
@@ -25,6 +26,9 @@ Output
       --hops-output <file>  hop table for CSV/TSV (default: <output>.hops.<ext> next to
                             --output; JSON embeds hops in each structure)
       --no-hops             do not write hops
+      --sites-output <file> stable-site table for CSV/TSV (default: <output>.sites.<ext>;
+                            JSON embeds sites in each structure)
+      --no-sites            do not write stable sites
       --list-features       print feature keys, units and descriptions, then exit
 
 Calculation
@@ -33,7 +37,8 @@ Calculation
                             (repeatable; default: from the CIF, else charge balance)
       --hop-cutoff <Å>      maximum mobile–mobile hop distance (default ${DEFAULT_HOP_CUTOFF})
       --grid <Å>            BVSE / void grid spacing (default ${DEFAULT_GRID_RES})
-      --no-grid             skip the BVSE / void grid (E_*, R_*, maxVoid, siteE_* empty); fast
+      --no-grid             skip the BVSE / void grid (E_*, R_*, maxVoid, siteE_*, stable sites
+                            empty); fast
 
 Other
   -r, --recursive           search directories recursively for *.cif / *.mcif
@@ -43,7 +48,7 @@ Other
   -V, --version             show the version
 
 Examples
-  csm-features samples/*.cif -o features.csv          # also writes features.hops.csv
+  csm-features samples/*.cif -o features.csv          # also features.hops.csv, features.sites.csv
   csm-features cifs/ -r --no-grid -o quick.tsv
   csm-features LiCoO2.cif -f json --mobile Li
 `;
@@ -172,10 +177,10 @@ async function runAll(tasks: Task[], opts: ExtractOptions, jobs: number, log: (s
   return results;
 }
 
-function hopsPathFor(output: string, ext: string) {
+function sidePathFor(output: string, part: "hops" | "sites", ext: string) {
   const e = extname(output);
   const stem = e ? output.slice(0, -e.length) : output;
-  return `${stem}.hops${ext}`;
+  return `${stem}.${part}${ext}`;
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -187,6 +192,8 @@ async function main(argv: string[]): Promise<number> {
       format: { type: "string", short: "f" },
       "hops-output": { type: "string" },
       "no-hops": { type: "boolean" },
+      "sites-output": { type: "string" },
+      "no-sites": { type: "boolean" },
       "list-features": { type: "boolean" },
       mobile: { type: "string", short: "m" },
       ox: { type: "string", multiple: true },
@@ -244,7 +251,7 @@ async function main(argv: string[]): Promise<number> {
   const wantHops = !v["no-hops"];
   let text: string;
   if (fmt === "json") {
-    text = toJson(result, { version: VERSION, mobile: opts.mobile, hopCutoff: opts.hopCutoff!, grid: opts.grid ?? null, hops: wantHops });
+    text = toJson(result, { version: VERSION, mobile: opts.mobile, hopCutoff: opts.hopCutoff!, grid: opts.grid ?? null, hops: wantHops, sites: !v["no-sites"] });
   } else text = delimited(featureRows(result.records), sep);
   if (output) writeFileSync(output, text);
   else process.stdout.write(text);
@@ -252,11 +259,19 @@ async function main(argv: string[]): Promise<number> {
   let hopNote = "";
   if (fmt !== "json" && wantHops) {
     const anyHops = result.records.some((r) => r.mobile);
-    const hopsOut = (v["hops-output"] as string | undefined) ?? (output && anyHops ? hopsPathFor(output, `.${fmt}`) : undefined);
+    const hopsOut = (v["hops-output"] as string | undefined) ?? (output && anyHops ? sidePathFor(output, "hops", `.${fmt}`) : undefined);
     if (hopsOut) {
       writeFileSync(hopsOut, delimited(hopRows(result.records), sep));
       hopNote = `, hops → ${hopsOut}`;
     } else if (anyHops) log("note: hops were not written (standard output); use --output or --hops-output to save them");
+  }
+  if (fmt !== "json" && !v["no-sites"]) {
+    const anySites = result.records.some((r) => r.sites.length);
+    const sitesOut = (v["sites-output"] as string | undefined) ?? (output && anySites ? sidePathFor(output, "sites", `.${fmt}`) : undefined);
+    if (sitesOut) {
+      writeFileSync(sitesOut, delimited(siteRows(result.records), sep));
+      hopNote += `, sites → ${sitesOut}`;
+    } else if (anySites) log("note: stable sites were not written (standard output); use --output or --sites-output to save them");
   }
 
   for (const e of result.errors) process.stderr.write(`error: ${e.file}${e.block ? ` [${e.block}]` : ""}: ${e.message}\n`);

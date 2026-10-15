@@ -5,6 +5,7 @@ import { CifBlock } from "./cif";
 import { FeatureValue, StaticFeatures, computeStaticFeatures, defaultMobile, ionicRadiusFn, mobileSiteEnergies } from "./features";
 import { FrameworkField, GridResult, computeGrid } from "./bvse";
 import { Crystal, crystalFromCif, formulaString, guessOxidationStates } from "./structure";
+import { EnergyMinimum, findMinima, minimaFeatureValues } from "./landscape";
 
 export const DEFAULT_HOP_CUTOFF = 4.0; // Å
 export const DEFAULT_GRID_RES = 0.2; // Å
@@ -45,6 +46,8 @@ export function prepareStructure(block: CifBlock, opts: { oxOverride?: Record<st
 export interface GridStage {
   grid: GridResult;
   siteE: { pos: number; group: string; E: number }[] | null;
+  /** Stable sites of the mobile ion on the BVSE landscape (null without energies). */
+  minima: EnergyMinimum[] | null;
   values: Record<string, FeatureValue>;
 }
 
@@ -90,5 +93,6 @@ export async function gridStage(
   const grid = await computeGrid(field, s.crystal, { resolution, maxPoints: GRID_MAX_POINTS, eCap: GRID_E_CAP }, onProgress, isCancelled);
   if (!grid) return null;
   const siteE = grid.energy ? mobileSiteEnergies(s.crystal, field, s.mobile, grid.eMinAbs) : null;
-  return { grid, siteE, values: gridFeatureValues(grid, siteE) };
+  const minima = grid.energy ? findMinima(s.crystal, field, grid, s.mobile) : null;
+  return { grid, siteE, minima, values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima) } };
 }

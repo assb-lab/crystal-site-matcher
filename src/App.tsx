@@ -66,10 +66,10 @@ export default function App() {
   const compareDocs = docs.filter((d) => !excluded.has(d.id));
   const wantedIds = useMemo(() => {
     if (mode === "compare") return compareDocs.map((d) => d.id);
-    if (active && (tab === "feat" || active.view.showHops || active.view.showIso || active.hopSel)) return [active.id];
+    if (active && (tab === "feat" || active.view.showHops || active.view.showIso || active.view.showMinima || active.hopSel)) return [active.id];
     return [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, tab, active?.id, active?.view.showHops, active?.view.showIso, active?.hopSel, compareDocs.map((d) => d.id).join(",")]);
+  }, [mode, tab, active?.id, active?.view.showHops, active?.view.showIso, active?.view.showMinima, active?.hopSel, compareDocs.map((d) => d.id).join(",")]);
   const { entries, errors } = useFeatures(docs, wantedIds);
   const freshEntry = (d: Doc) => (entries[d.id] && entries[d.id].sig === featureSig(d) ? entries[d.id] : undefined);
 
@@ -79,7 +79,7 @@ export default function App() {
     if (!d) return;
     const t = setTimeout(() => {
       const { bonds } = deriveBonds(d.crystal, d.ox, d.bondSettings);
-      const spec = buildScene(d.crystal, bonds, { ...d.view, showLabels: false, supercell: [1, 1, 1], showHops: false, showIso: false, atomScale: 0.3 }, null);
+      const spec = buildScene(d.crystal, bonds, { ...d.view, showLabels: false, supercell: [1, 1, 1], showHops: false, showIso: false, showMinima: false, atomScale: 0.3 }, null);
       updateDoc(d.id, () => ({ thumb: renderThumbnail(spec) ?? "" }));
     }, 30);
     return () => clearTimeout(t);
