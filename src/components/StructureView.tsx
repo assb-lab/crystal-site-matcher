@@ -60,7 +60,7 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
       x.hopRange = [Math.min(...rbs), Math.max(...rbs)];
     }
     if (view.showHops && hops?.length) x.hops = hops;
-    if (selClass && hops) x.selHops = selClass.members.map((i) => hops[i]);
+    if (selClass && hops) x.selHops = selClass.members.map((i) => ({ ...hops[i], saddle: entry?.barriers?.[i]?.saddle }));
     if (view.showMinima && entry?.minima) x.minima = entry.minima;
     if (view.showIso && entry?.grid?.energy && doc.mobile)
       x.iso = { field: entry.grid.energy, n: entry.grid.n, level: view.isoLevel ?? autoIsoLevel(entry), color: ISO_COLOR };

@@ -7,6 +7,7 @@ import { GridResult } from "./bvse";
 import { gridStage, hasMobile, staticStage } from "./pipeline";
 import { XrdPattern, simulateXrd } from "./xrd";
 import type { EnergyMinimum } from "./landscape";
+import type { HopBarrier } from "./hopBarriers";
 
 export type GridStatus = "pending" | "running" | "done" | "none" | "error";
 
@@ -20,6 +21,7 @@ export interface FeatureEntry {
   progress: number;
   siteE: { pos: number; group: string; E: number }[] | null;
   minima: EnergyMinimum[] | null;
+  barriers: (HopBarrier | null)[] | null; // aligned with static.hops
   values: Record<string, FeatureValue>;
 }
 
@@ -66,7 +68,7 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
           const xrd = simulateXrd(job.crystal);
           setEntries((e) => ({
             ...e,
-            [job.id]: { sig, static: st, xrd, grid: null, gridStatus: hasMobile(job) ? "pending" : "none", progress: 0, siteE: null, minima: null, values: { ...st.values } },
+            [job.id]: { sig, static: st, xrd, grid: null, gridStatus: hasMobile(job) ? "pending" : "none", progress: 0, siteE: null, minima: null, barriers: null, values: { ...st.values } },
           }));
           return;
         }
@@ -83,12 +85,13 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
             }
           },
           stale,
+          entriesRef.current[job.id]?.static.hops ?? [],
         );
         if (!res || stale()) return;
-        const { grid, siteE, minima, values: vals } = res;
+        const { grid, siteE, minima, barriers, values: vals } = res;
         setEntries((e) =>
           e[job.id] && e[job.id].sig === sig
-            ? { ...e, [job.id]: { ...e[job.id], grid, siteE, minima, gridStatus: "done", progress: 1, values: { ...e[job.id].values, ...vals } } }
+            ? { ...e, [job.id]: { ...e[job.id], grid, siteE, minima, barriers, gridStatus: "done", progress: 1, values: { ...e[job.id].values, ...vals } } }
             : e,
         );
       } catch (err) {
