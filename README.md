@@ -2,7 +2,7 @@
 
 CIF ファイルの結晶構造で、あるサイトのイオンを別のイオンに置き換えたときに「入りそうかどうか」を、配位多面体の結合距離とシャノンのイオン半径から見積もる Web アプリです。イオン伝導体の解析に使える構造特徴量（BVSE 浸透障壁、空隙のボトルネック、可動イオン副格子、多面体の連結など）を計算し、複数の構造をグラフで比較できます。ビルドすると HTML 1 ファイル（`dist/index.html`）になり、サーバーなしでブラウザで開けます。
 
-ソースコード: [Crystal Site Matcher（GitHub）](https://github.com/assb-lab/crystal-site-matcher)。アプリ上部のリンクから新しいタブで開けます。
+ソースコード: [Crystal Site Matcher（GitHub）](https://github.com/assb-lab/crystal-site-matcher)。アプリ上部のテーマ切り替えの右側にある GitHub アイコンから新しいタブで開けます。
 
 ## 使い方
 

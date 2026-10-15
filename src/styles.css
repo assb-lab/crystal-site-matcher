@@ -211,25 +211,25 @@ select {
   letter-spacing: 0.01em;
   line-height: 1.2;
 }
-.brand-title {
-  display: flex;
+.appearance-controls {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px;
 }
 .repo-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--accent);
+  border-radius: 50%;
+  color: var(--muted);
   background: var(--panel-2);
-  font-size: var(--fs-xs);
   text-decoration: none;
 }
-.repo-link:hover { background: var(--accent-soft); border-color: var(--accent); }
+.repo-link:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
 .brand-sub {
   margin: 0;
   font-size: var(--fs-xs);
