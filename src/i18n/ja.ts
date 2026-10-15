@@ -3,7 +3,6 @@ export const ja = {
   "app.drop": "CIF ファイルをドロップして開く（複数可）",
   "app.emptyBody": "CIF ファイルを開くかドロップするか、左下のサンプルから追加してください。",
   "app.emptyTitle": "構造が開かれていません",
-  "app.repo": "GitHub",
   "app.repoHint": "Crystal Site Matcher の GitHub（新しいタブで開く）",
   "app.open": "CIF を開く",
   "app.openHint": "複数ファイル・複数データブロックに対応。ドラッグ＆ドロップでも開けます。",
