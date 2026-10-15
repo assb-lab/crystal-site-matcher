@@ -70,6 +70,25 @@ export interface Crystal {
 
 const d2r = Math.PI / 180;
 
+/**
+ * Smallest accepted normalised volume V/(abc) = √(1 − cos²α − cos²β − cos²γ + 2 cosα cosβ cosγ).
+ * Real cells, even strongly oblique ones (γ ≈ 2°), stay far above it; it only separates rounding from a flat cell.
+ */
+export const CELL_MIN_NORM_VOLUME = 1e-3;
+
+/**
+ * Why the lattice parameters cannot describe a 3D cell, or null when they can. Lengths must be finite and
+ * positive, angles finite and strictly between 0° and 180°, and the metric tensor positive definite
+ * (its leading minors are 1, sin²γ and V²/(abc)² – the last is the test that matters).
+ */
+export function cellProblem(a: number, b: number, c: number, alpha: number, beta: number, gamma: number): "length" | "angle" | "volume" | null {
+  if (![a, b, c].every((x) => Number.isFinite(x) && x > 0)) return "length";
+  if (![alpha, beta, gamma].every((x) => Number.isFinite(x) && x > 0 && x < 180)) return "angle";
+  const [ca, cb, cg] = [alpha, beta, gamma].map((x) => Math.cos(x * d2r));
+  const g = 1 - ca * ca - cb * cb - cg * cg + 2 * ca * cb * cg;
+  return g > CELL_MIN_NORM_VOLUME ** 2 ? null : "volume";
+}
+
 export function makeLattice(a: number, b: number, c: number, alpha: number, beta: number, gamma: number): Lattice {
   const ca = Math.cos(alpha * d2r),
     cb = Math.cos(beta * d2r),
@@ -166,10 +185,17 @@ export function crystalFromCif(block: CifBlock): Crystal {
   const a = num("_cell_length_a"),
     b = num("_cell_length_b"),
     c = num("_cell_length_c");
-  const alpha = num("_cell_angle_alpha") || 90,
-    beta = num("_cell_angle_beta") || 90,
-    gamma = num("_cell_angle_gamma") || 90;
-  if (!(a > 0 && b > 0 && c > 0)) throw new MsgError("err.noCell");
+  // a missing or unknown ("?", ".") angle is 90°; a given value, even 0, is checked below
+  const angle = (tag: string) => {
+    const v = num(tag);
+    return Number.isNaN(v) ? 90 : v;
+  };
+  const alpha = angle("_cell_angle_alpha"),
+    beta = angle("_cell_angle_beta"),
+    gamma = angle("_cell_angle_gamma");
+  if (Number.isNaN(a) || Number.isNaN(b) || Number.isNaN(c)) throw new MsgError("err.noCell");
+  const bad = cellProblem(a, b, c, alpha, beta, gamma);
+  if (bad) throw new MsgError(`err.cell.${bad}`, { a, b, c, alpha, beta, gamma });
   const lattice = makeLattice(a, b, c, alpha, beta, gamma);
 
   // ---- symmetry ----
