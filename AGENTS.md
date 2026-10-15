@@ -97,6 +97,7 @@ tests/            node:test。*-fixture.mjs が vite の ssrLoadModule で src �
 - 計算やフォーマットを変えたら `tests/` に回帰テストを追加します。fixture は vite の `ssrLoadModule` で `src/` を直接読み込みます。
 - UI を変えたら、ブラウザで日本語・英語の両方、ライト・ダーク、スマホ幅（約 400px）を確認します。あわせて、コンソールエラーがないことと横スクロールが出ないことも確認します。
 - CLI を変えたら `pnpm build` のあと `node dist/csm-features.mjs src/samples -o /tmp/f.csv` などで実際に動かします。
+- ICSD など再配布できない CIF はコミットしません。回帰テストに使うときは `tests/private/`（gitignore 済み）か `CSM_PRIVATE_CIFS` のフォルダから読み、ファイルがなければスキップします（`tests/private.test.mjs`）。
 
 ## Git / GitHub の進め方
 
