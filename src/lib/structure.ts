@@ -145,26 +145,78 @@ const wrap = (x: number) => {
   return w > 1 - 1e-7 ? 0 : w;
 };
 
+// Cache the QR factors of a short-vector-first basis for each immutable lattice.
+const distanceBases = new WeakMap<Lattice, { q: Vec3[]; r: number[][]; scale: number }>();
+function distanceBasis(L: Lattice) {
+  let basis = distanceBases.get(L);
+  if (basis) return basis;
+  const unit = Math.max(L.a, L.b, L.c);
+  const vectors = [L.A, L.B, L.C].map((v) => v.map((x) => x / unit) as Vec3).sort((a, b) => norm(a) - norm(b));
+  const q: Vec3[] = [];
+  const r = [0, 1, 2].map(() => [0, 0, 0]);
+  for (let j = 0; j < 3; j++) {
+    let v: Vec3 = [...vectors[j]];
+    // Reorthogonalise to retain accuracy for strongly oblique bases.
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < j; i++) {
+      const projection = dot(q[i], v);
+      r[i][j] += projection;
+      v = v.map((x, k) => x - projection * q[i][k]) as Vec3;
+    }
+    r[j][j] = norm(v);
+    q.push(v.map((x) => x / r[j][j]) as Vec3);
+  }
+  basis = { q, r, scale: unit };
+  distanceBases.set(L, basis);
+  return basis;
+}
+
 /**
- * Shortest Cartesian distance between two fractional points under periodic boundaries, for any valid cell.
- * The image at the reduced difference d gives an upper bound R; an image d + n that is shorter has
- * |(d + n)_k| = |r · a*_k| ≤ R |a*_k| along each reciprocal vector, which bounds the integers n_k to search
- * (in a strongly oblique cell, translations beyond ±1 can give the shortest image).
+ * Exact closest periodic image by a 3D sphere search in QR coordinates.
+ * A nearest-plane image seeds the radius; each level bounds the remaining squared distance,
+ * and the radius shrinks whenever a closer image is found. No fixed Cartesian box is scanned.
  */
 export function pbcDist(L: Lattice, f1: Vec3, f2: Vec3): number {
   const d = [0, 1, 2].map((k) => f1[k] - f2[k] - Math.round(f1[k] - f2[k])) as Vec3;
-  const R = norm(toCart(L, d));
-  let best = R;
-  const lo = [0, 1, 2].map((k) => Math.ceil(-R * L.recip[k] - d[k] - 1e-9));
-  const hi = [0, 1, 2].map((k) => Math.floor(R * L.recip[k] - d[k] + 1e-9));
-  for (let i = lo[0]; i <= hi[0]; i++)
-    for (let j = lo[1]; j <= hi[1]; j++)
-      for (let k = lo[2]; k <= hi[2]; k++) {
-        if (!i && !j && !k) continue;
-        const r = norm(toCart(L, [d[0] + i, d[1] + j, d[2] + k]));
-        if (r < best) best = r;
+  const { q, r, scale: unit } = distanceBasis(L);
+  const target = toCart(L, d).map((x) => x / unit) as Vec3;
+  if (norm(target) === 0) return 0;
+  const y = q.map((v) => dot(v, target));
+  const image = [0, 0, 0];
+  // Back substitution rounds in the metric, rather than rounding each fractional coordinate alone.
+  for (let k = 2; k >= 0; k--) {
+    let t = y[k];
+    for (let j = k + 1; j < 3; j++) t -= r[k][j] * image[j];
+    image[k] = Math.round(t / r[k][k]);
+  }
+  let best = y.reduce((sum, t, k) => {
+    for (let j = k; j < 3; j++) t -= r[k][j] * image[j];
+    return sum + t * t;
+  }, 0);
+  const search = (k: number, partial: number) => {
+    let t = y[k];
+    for (let j = k + 1; j < 3; j++) t -= r[k][j] * image[j];
+    const centre = t / r[k][k];
+    const nearest = Math.round(centre);
+    if (k === 0) {
+      const residual = t - r[0][0] * nearest;
+      best = Math.min(best, partial + residual * residual);
+      return;
+    }
+    // Nearest integers first, recomputing the radius after each improvement.
+    for (let offset = 0; ; offset++) {
+      const radius = Math.sqrt(Math.max(0, best - partial)) / r[k][k];
+      if (offset - Math.abs(nearest - centre) > radius + 1e-10) break;
+      for (const n of offset ? [nearest - offset, nearest + offset] : [nearest]) {
+        const residual = t - r[k][k] * n;
+        const next = partial + residual * residual;
+        if (next > best + Number.EPSILON * best * 8) continue;
+        image[k] = n;
+        search(k - 1, next);
       }
-  return best;
+    }
+  };
+  search(2, 0);
+  return Math.sqrt(best) * unit;
 }
 
 /** "Fe2+", "O2-", "Fe+3", "Ca1", "OW", "CA" → element (+ optional charge). */
@@ -196,8 +248,10 @@ export function crystalFromCif(block: CifBlock): Crystal {
     c = num("_cell_length_c");
   // a missing or unknown ("?", ".") angle is 90°; a given value, even 0, is checked below
   const angle = (tag: string) => {
-    const v = num(tag);
-    return Number.isNaN(v) ? 90 : v;
+    const raw = getItem(block, tag);
+    if (raw === undefined) return 90;
+    // Missing/unknown values are different from malformed numeric tokens.
+    return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?(?:\(\d+\))?$/.test(raw.trim()) ? cifNumber(raw) : NaN;
   };
   const alpha = angle("_cell_angle_alpha"),
     beta = angle("_cell_angle_beta"),
@@ -206,6 +260,12 @@ export function crystalFromCif(block: CifBlock): Crystal {
   const bad = cellProblem(a, b, c, alpha, beta, gamma);
   if (bad) throw new MsgError(`err.cell.${bad}`, { a, b, c, alpha, beta, gamma });
   const lattice = makeLattice(a, b, c, alpha, beta, gamma);
+  // Finite input lengths can still overflow/underflow the volume or inverse matrix.
+  const determinant = dot(lattice.A, cross(lattice.B, lattice.C));
+  if (!(lattice.volume > 0 && Number.isFinite(lattice.volume) && determinant > 0 && Number.isFinite(determinant)) ||
+      ![...lattice.A, ...lattice.B, ...lattice.C, ...lattice.inv.flat(), ...lattice.recip].every(Number.isFinite) ||
+      !lattice.recip.every((r) => r > 0) || Math.abs(determinant / lattice.volume - 1) > 1e-8)
+    throw new MsgError("err.cell.numeric", { a, b, c, alpha, beta, gamma });
 
   // ---- symmetry ----
   let ops: SymOp[] = [];

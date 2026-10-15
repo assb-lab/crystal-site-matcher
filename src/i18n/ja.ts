@@ -73,6 +73,7 @@ export const ja = {
   "cutoff.source.atomic": "原子半径の和 × 1.15",
   "err.cell.angle": "格子角が不正です（α = {alpha}, β = {beta}, γ = {gamma}°）。0° より大きく 180° より小さい有限値が必要です。",
   "err.cell.length": "格子定数の長さが不正です（a = {a}, b = {b}, c = {c} Å）。正の有限値が必要です。",
+  "err.cell.numeric": "格子定数から有限で非退化な格子を計算できません（a = {a}, b = {b}, c = {c} Å; α = {alpha}, β = {beta}, γ = {gamma}°）。値の大きさと精度を確認してください。",
   "err.cell.volume": "格子角 α = {alpha}, β = {beta}, γ = {gamma}° の組み合わせでは 3 次元のセルになりません（体積が 0 か虚数）。",
   "err.fileBlock": "{file} の data_{block}: {error}",
   "err.noAtomBlock": "原子座標を含むデータブロックが見つかりません（_atom_site_fract_x が必要です）。",
