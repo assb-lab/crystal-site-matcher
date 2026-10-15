@@ -71,6 +71,8 @@ export function gridFeatureValues(grid: GridResult, siteE: GridStage["siteE"]): 
     R_a: Number.isNaN(grid.Raxis[0]) ? null : grid.Raxis[0],
     R_b: Number.isNaN(grid.Raxis[1]) ? null : grid.Raxis[1],
     R_c: Number.isNaN(grid.Raxis[2]) ? null : grid.Raxis[2],
+    vol_conn: grid.conn ? grid.conn.connected : null,
+    vol_conn_ratio: grid.conn && grid.conn.low > 0 ? grid.conn.connected / grid.conn.low : null,
     maxVoid: grid.maxVoid,
     siteE_sd: null,
     siteE_range: null,
@@ -113,6 +115,6 @@ export async function gridStage(
     siteE,
     minima,
     barriers,
-    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima), ...hopBarrierFeatureValues(hops, barriers) },
+    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima, s.mobile), ...hopBarrierFeatureValues(s.crystal, hops, barriers, s.mobile) },
   };
 }

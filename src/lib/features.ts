@@ -146,6 +146,8 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "R_b", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "R_c", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "maxVoid", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "vol_conn", digits: 4, group: "grid", async: true },
+  { key: "vol_conn_ratio", digits: 3, group: "grid", async: true },
   { key: "n_interstitial", digits: 0, group: "grid", async: true },
   { key: "rho_interstitial", unit: "nm⁻³", digits: 2, group: "grid", async: true },
   { key: "E_interstitial_min", unit: "eV", digits: 3, group: "grid", async: true },
@@ -153,6 +155,7 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "site_energy_spread", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "curv_min", unit: "eV/Å²", digits: 2, group: "grid", async: true },
   { key: "curv_aniso", digits: 2, group: "grid", async: true },
+  { key: "site_recovery", digits: 3, group: "grid", async: true },
   { key: "hop_barrier_min", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "hop_barrier_mean", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "hop_barrier_sd", unit: "eV", digits: 3, group: "grid", async: true },
@@ -163,6 +166,13 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "E_hop_a", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "E_hop_b", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "E_hop_c", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "trap_max", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "trap_mean", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "trap_isolated", digits: 0, group: "grid", async: true },
+  { key: "trap_unresolved", digits: 0, group: "grid", async: true },
+  { key: "hop_bypass_dim", digits: 0, group: "grid", async: true },
+  { key: "E_hop_bypass", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "dE_hop_bypass", unit: "eV", digits: 3, group: "grid", async: true },
 ];
 
 export const FEATURE_BY_KEY = Object.fromEntries(FEATURE_DEFS.map((f) => [f.key, f])) as Record<string, FeatureDef>;

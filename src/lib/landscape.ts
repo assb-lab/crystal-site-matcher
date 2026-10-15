@@ -18,6 +18,8 @@ export const MINIMA_MERGE = 0.5;
  * displaced, e.g. the Li2 minima 0.8 Å above and below the Li₂N layer of Li₃N).
  */
 export const SITE_MATCH = 1.0;
+/** Recovery criterion (Å): a CIF mobile-ion position counts as found when a minimum lies this close (as in CAVD). */
+export const SITE_RECOVERY = 0.5;
 /** Finite-difference step (Å) for gradients and Hessians on the field. */
 const FD = 0.04;
 
@@ -109,7 +111,7 @@ export function localQuadratic(field: FrameworkField, p: Vec3, h = FD) {
 }
 
 /** Shortest Cartesian distance between two fractional points under periodic boundaries. */
-function pbcDist(cr: Crystal, f1: Vec3, f2: Vec3): number {
+export function pbcDist(cr: Crystal, f1: Vec3, f2: Vec3): number {
   const d = [0, 1, 2].map((k) => f1[k] - f2[k] - Math.round(f1[k] - f2[k]));
   let best = Infinity;
   for (let i = -1; i <= 1; i++)
@@ -235,8 +237,8 @@ function shortestTranslation(cr: Crystal): number {
 }
 
 /** Feature values from the stable sites (grid group). */
-export function minimaFeatureValues(cr: Crystal, minima: EnergyMinimum[] | null): Record<string, number | null> {
-  const keys = ["n_interstitial", "rho_interstitial", "E_interstitial_min", "site_spacing", "site_energy_spread", "curv_min", "curv_aniso"];
+export function minimaFeatureValues(cr: Crystal, minima: EnergyMinimum[] | null, mobileEl: string): Record<string, number | null> {
+  const keys = ["n_interstitial", "rho_interstitial", "E_interstitial_min", "site_spacing", "site_energy_spread", "curv_min", "curv_aniso", "site_recovery"];
   if (!minima) return Object.fromEntries(keys.map((k) => [k, null]));
   const inter = minima.filter((m) => !m.occupied);
   const occ = minima.filter((m) => m.occupied);
@@ -245,6 +247,9 @@ export function minimaFeatureValues(cr: Crystal, minima: EnergyMinimum[] | null)
   const nn = minima.map((m) => Math.min(selfImage, ...minima.filter((o) => o !== m).map((o) => pbcDist(cr, m.frac, o.frac)), Infinity)).filter(Number.isFinite);
   const Es = minima.map((m) => m.E);
   const eBar = mean(Es);
+  // fraction of the CIF mobile-ion positions with a minimum within SITE_RECOVERY (He et al., Sci. Data 7, 153 (2020))
+  const sites = cr.positions.filter((p) => p.occupants.some((o) => cr.sites[o.site].element === mobileEl));
+  const found = sites.filter((p) => minima.some((m) => pbcDist(cr, p.frac, m.frac) <= SITE_RECOVERY)).length;
   return {
     n_interstitial: inter.length,
     rho_interstitial: (inter.length / cr.lattice.volume) * 1000,
@@ -253,5 +258,6 @@ export function minimaFeatureValues(cr: Crystal, minima: EnergyMinimum[] | null)
     site_energy_spread: eBar === null ? null : Math.sqrt(Es.reduce((s, e) => s + (e - eBar) ** 2, 0) / Es.length),
     curv_min: mean(occ.map((m) => m.curvature[0])),
     curv_aniso: mean(occ.map((m) => m.curvature[2] / m.curvature[0])),
+    site_recovery: sites.length ? found / sites.length : null,
   };
 }
