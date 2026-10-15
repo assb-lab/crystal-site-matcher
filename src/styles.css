@@ -216,7 +216,7 @@ select {
   align-items: center;
   gap: 8px;
 }
-.repo-link {
+.icon-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -228,8 +228,15 @@ select {
   color: var(--muted);
   background: var(--panel-2);
   text-decoration: none;
+  /* the "?" guide button shares the look of the GitHub link */
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--fs-m);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
 }
-.repo-link:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.icon-link:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
 .brand-sub {
   margin: 0;
   font-size: var(--fs-xs);
@@ -1803,6 +1810,45 @@ tr.is-host td {
 }
 .scroll-anchor {
   scroll-margin-top: 12px;
+}
+
+/* ---------- onboarding guide ---------- */
+.tour {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tour-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.6;
+}
+.tour-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.tour-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tour-dots > span:not(.tour-count) {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.tour-dots > span.is-on {
+  background: var(--accent);
+}
+.tour-count {
+  margin-left: 4px;
 }
 
 /* ---------- periodic table ---------- */
