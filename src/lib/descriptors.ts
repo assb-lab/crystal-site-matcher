@@ -88,7 +88,7 @@ export function computeDescriptors(
   v.cn_anion_sd = cnA.sd;
 
   // isolated anions: bonded to no framework cation (only to mobile ions, or to nothing)
-  const isoKeys = ["isoAnion_frac", "isoAnion_rho", "isoAnion_dXX", "isoAnion_cn", "isoAnion_cshm", "ionPot_isoAnion"];
+  const isoKeys = ["isoAnion_frac", "isoAnion_rho", "isoAnion_dXX", "isoAnion_cn", "isoAnion_cshm", "ionPot_isoAnion", "ionPot_isoAnion_range"];
   if (mobileEl && mobiles.length && anions.length) {
     const isolated = (pos: number) => !bonds.bonded[pos].some((nb) => P[nb.j].occupants.some((o) => isFrameCation(o.site)));
     const iso = anions.filter((x) => isolated(x.pos));
@@ -101,6 +101,9 @@ export function computeDescriptors(
     v.isoAnion_cn = wstats(iso.map((x) => ({ v: x.a.cn, w: anionW(x) }))).mean;
     v.isoAnion_cshm = wstats(iso.map((x) => ({ v: x.a.shapes[0]?.cshm ?? null, w: anionW(x) }))).mean;
     v.ionPot_isoAnion = wstats(iso.map((x) => ({ v: ionPot(x.pos), w: anionW(x) }))).mean;
+    // between the isolated-anion sites only, e.g. the 4a / 4d imbalance of argyrodites (the PS₄ sulphur is not isolated)
+    const isoPots = iso.map((x) => ionPot(x.pos)).filter((p): p is number => p !== null);
+    v.ionPot_isoAnion_range = isoPots.length ? Math.max(...isoPots) - Math.min(...isoPots) : null;
   } else for (const k of isoKeys) v[k] = null;
 
   // ---------------- distributions over the mobile and framework sublattices ----------------

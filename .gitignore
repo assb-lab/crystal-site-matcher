@@ -12,3 +12,5 @@ bun.lockb
 .venv/
 __pycache__/
 .sources/
+# CIFs that may not be redistributed (e.g. ICSD); tests/private.test.mjs reads them when present
+tests/private/
