@@ -201,6 +201,8 @@ export interface GridResult {
   eMinAbs: number;
   E: [number, number, number]; // percolation energies 1D/2D/3D (Infinity if none below cap)
   R: [number, number, number]; // percolation radii 1D/2D/3D (NaN if none)
+  Eaxis: [number, number, number]; // percolation energies along a / b / c (Infinity if none below cap)
+  Raxis: [number, number, number]; // percolation radii along a / b / c (NaN if none)
   maxVoid: number;
   energyCurve: { x: number; y: number }[]; // ΔE → accessible volume fraction
   voidCurve: { x: number; y: number }[]; // probe radius → accessible volume fraction
@@ -272,10 +274,12 @@ export async function computeGrid(
     return out;
   };
 
-  /** Flood the grid in the given order; record the value at which the active set first percolates in 1D/2D/3D. */
-  const percolate = (order: Uint32Array, val: (idx: number) => number, stop: (v: number) => boolean): [number, number, number] => {
+  type Triple = [number, number, number];
+  /** Flood the grid in the given order; record the value at which the active set first percolates in 1D/2D/3D and along a/b/c. */
+  const percolate = (order: Uint32Array, val: (idx: number) => number, stop: (v: number) => boolean): { dim: Triple; axis: Triple } => {
     const uf = new PeriodicUnionFind(N);
-    const out: [number, number, number] = [NaN, NaN, NaN];
+    const dim: Triple = [NaN, NaN, NaN];
+    const axis: Triple = [NaN, NaN, NaN];
     for (let q = 0; q < order.length; q++) {
       const idx = order[q];
       const v = val(idx);
@@ -285,11 +289,12 @@ export async function computeGrid(
         if (!uf.active(nb)) continue;
         const before = uf.maxRank;
         uf.union(idx, nb, s);
-        if (uf.maxRank > before) for (let d = before; d < uf.maxRank; d++) if (Number.isNaN(out[d])) out[d] = v;
+        if (uf.maxRank > before) for (let d = before; d < uf.maxRank; d++) if (Number.isNaN(dim[d])) dim[d] = v;
+        for (let k = 0; k < 3; k++) if (uf.axes[k] && Number.isNaN(axis[k])) axis[k] = v;
       }
       if (uf.maxRank === 3) break;
     }
-    return out;
+    return { dim, axis };
   };
 
   const sortBy = (arr: Float32Array, asc: boolean) => {
@@ -298,12 +303,15 @@ export async function computeGrid(
     return idx.sort(asc ? (x, y) => arr[x] - arr[y] : (x, y) => arr[y] - arr[x]);
   };
 
-  let E: [number, number, number] = [Infinity, Infinity, Infinity];
+  let E: Triple = [Infinity, Infinity, Infinity];
+  let Eaxis: Triple = [Infinity, Infinity, Infinity];
   const energyCurve: { x: number; y: number }[] = [];
   if (energy) {
     const ord = sortBy(energy, true);
     const p = percolate(ord, (i) => energy[i], (v) => v > opts.eCap);
-    E = p.map((v) => (Number.isNaN(v) ? Infinity : v)) as [number, number, number];
+    const inf = (t: Triple) => t.map((v) => (Number.isNaN(v) ? Infinity : v)) as Triple;
+    E = inf(p.dim);
+    Eaxis = inf(p.axis);
     // a common 0 – eCap range so curves of different structures can be overlaid
     const top = opts.eCap;
     let q = 0;
@@ -315,7 +323,7 @@ export async function computeGrid(
   }
   await tick();
   const ordV = sortBy(voids, false);
-  const R = percolate(ordV, (i) => voids[i], (v) => v < 0) as [number, number, number];
+  const { dim: R, axis: Raxis } = percolate(ordV, (i) => voids[i], (v) => v < 0);
   const maxVoid = voids[ordV[0]];
   const voidCurve: { x: number; y: number }[] = [];
   {
@@ -327,5 +335,5 @@ export async function computeGrid(
       voidCurve.unshift({ x, y: q / N });
     }
   }
-  return { n, resolution: res, energy, voids, eMinAbs, E, R, maxVoid, energyCurve, voidCurve, setup: field.setup };
+  return { n, resolution: res, energy, voids, eMinAbs, E, R, Eaxis, Raxis, maxVoid, energyCurve, voidCurve, setup: field.setup };
 }

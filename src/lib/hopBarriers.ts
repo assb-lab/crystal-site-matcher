@@ -177,7 +177,7 @@ export async function hopBarriers(cr: Crystal, grid: GridResult, field: Framewor
 
 /** Feature values from the per-hop barriers (grid group). */
 export function hopBarrierFeatureValues(hops: Hop[], barriers: (HopBarrier | null)[] | null): Record<string, number | null> {
-  const keys = ["hop_barrier_min", "hop_barrier_mean", "hop_barrier_sd", "hop_asymmetry", "E_hop_1D", "E_hop_2D", "E_hop_3D"];
+  const keys = ["hop_barrier_min", "hop_barrier_mean", "hop_barrier_sd", "hop_asymmetry", "E_hop_1D", "E_hop_2D", "E_hop_3D", "E_hop_a", "E_hop_b", "E_hop_c"];
   const ok = barriers ? hops.map((h, i) => ({ h, b: barriers[i] })).filter((x): x is { h: Hop; b: HopBarrier } => !!x.b) : [];
   if (!ok.length) return Object.fromEntries(keys.map((k) => [k, null]));
   // one barrier per hop: from the lower of its two sites
@@ -189,10 +189,12 @@ export function hopBarrierFeatureValues(hops: Hop[], barriers: (HopBarrier | nul
   const uf = new PeriodicUnionFind(nodes.length);
   nodes.forEach((_, i) => uf.make(i));
   const Ed: (number | null)[] = [null, null, null];
+  const Eax: (number | null)[] = [null, null, null];
   for (const { h, b } of [...ok].sort((x, y) => x.b.Esad - y.b.Esad)) {
     const before = uf.maxRank;
     uf.union(idx.get(h.a)!, idx.get(h.b)!, h.t);
     for (let d = before; d < uf.maxRank; d++) Ed[d] = b.Esad;
+    for (let k = 0; k < 3; k++) if (uf.axes[k] && Eax[k] === null) Eax[k] = b.Esad;
   }
   return {
     hop_barrier_min: Math.min(...bs),
@@ -202,5 +204,8 @@ export function hopBarrierFeatureValues(hops: Hop[], barriers: (HopBarrier | nul
     E_hop_1D: Ed[0],
     E_hop_2D: Ed[1],
     E_hop_3D: Ed[2],
+    E_hop_a: Eax[0],
+    E_hop_b: Eax[1],
+    E_hop_c: Eax[2],
   };
 }

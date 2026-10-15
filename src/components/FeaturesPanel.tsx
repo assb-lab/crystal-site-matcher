@@ -186,6 +186,9 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                     <span className="mono">{isoLevel.toFixed(2)} eV</span>
                   </label>
                 </div>
+                <p className="muted small">
+                  {t("feat.axes")} {axisLine(grid.Eaxis, Number.isFinite, " eV")}
+                </p>
                 {entry.siteE && entry.siteE.length > 0 && (
                   <p className="muted small">
                     {t("feat.siteE")} {[...new Map(entry.siteE.map((s) => [s.group, s.E])).entries()].map(([g, e]) => `${g} ${Math.abs(e) < 0.005 ? "0.00" : e.toFixed(2)} eV`).join(t("list.sep"))}
@@ -260,6 +263,11 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                 xFmt={(x) => x.toFixed(2) + " Å"}
                 yFmt={(y) => y.toFixed(1) + "%"}
               />
+            ) : null}
+            {grid ? (
+              <p className="muted small">
+                {t("feat.axes")} {axisLine(grid.Raxis, (r) => !Number.isNaN(r), " Å")}
+              </p>
             ) : (
               <p className="muted small">{doc.mobile ? t("feat.runningLong") : t("feat.pickMobile")}</p>
             )}
@@ -514,6 +522,11 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
       )}
     </div>
   );
+}
+
+/** "a 0.59 / b 0.59 / c 0.52 eV"; an axis that never opens is shown as "–". */
+function axisLine(vals: number[], ok: (x: number) => boolean, unit: string) {
+  return (["a", "b", "c"] as const).map((k, i) => `${k} ${ok(vals[i]) ? vals[i].toFixed(2) : "–"}`).join(" / ") + unit;
 }
 
 function Kpi({ label, value, unit, sub }: { label: string; value: string; unit?: string; sub?: string }) {

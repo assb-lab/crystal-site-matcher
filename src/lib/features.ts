@@ -83,6 +83,9 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "rb_1D", unit: "Å", digits: 3, group: "network" },
   { key: "rb_2D", unit: "Å", digits: 3, group: "network" },
   { key: "rb_3D", unit: "Å", digits: 3, group: "network" },
+  { key: "rb_a", unit: "Å", digits: 3, group: "network" },
+  { key: "rb_b", unit: "Å", digits: 3, group: "network" },
+  { key: "rb_c", unit: "Å", digits: 3, group: "network" },
   // framework connectivity
   { key: "frame_corner", digits: 3, group: "frame" },
   { key: "frame_edge", digits: 3, group: "frame" },
@@ -130,11 +133,18 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "E_1D", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "E_2D", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "E_3D", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_a", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_b", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_c", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_axis_range", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "siteE_sd", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "siteE_range", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "R_1D", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "R_2D", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "R_3D", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "R_a", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "R_b", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "R_c", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "maxVoid", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "n_interstitial", digits: 0, group: "grid", async: true },
   { key: "rho_interstitial", unit: "nm⁻³", digits: 2, group: "grid", async: true },
@@ -150,6 +160,9 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "E_hop_1D", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "E_hop_2D", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "E_hop_3D", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_hop_a", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_hop_b", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_hop_c", unit: "eV", digits: 3, group: "grid", async: true },
 ];
 
 export const FEATURE_BY_KEY = Object.fromEntries(FEATURE_DEFS.map((f) => [f.key, f])) as Record<string, FeatureDef>;
@@ -522,17 +535,22 @@ export function computeStaticFeatures(
     const uf = new PeriodicUnionFind(mobilePos.length);
     mobilePos.forEach((_, i) => uf.make(i));
     const rbD: (number | null)[] = [null, null, null];
+    const rbAx: (number | null)[] = [null, null, null];
     for (const h of [...hops].sort((x, y) => y.rb - x.rb)) {
       const before = uf.maxRank;
       uf.union(idx.get(h.a)!, idx.get(h.b)!, h.t);
       for (let d = before; d < uf.maxRank; d++) rbD[d] = h.rb;
+      for (let k = 0; k < 3; k++) if (uf.axes[k] && rbAx[k] === null) rbAx[k] = h.rb;
     }
     v.hopDim = uf.maxRank;
     v.rb_1D = rbD[0];
     v.rb_2D = rbD[1];
     v.rb_3D = rbD[2];
+    v.rb_a = rbAx[0];
+    v.rb_b = rbAx[1];
+    v.rb_c = rbAx[2];
   } else {
-    for (const k of ["hopDegree", "hopDim", "rb_min", "rb_mean", "rb_1D", "rb_2D", "rb_3D"]) v[k] = null;
+    for (const k of ["hopDegree", "hopDim", "rb_min", "rb_mean", "rb_1D", "rb_2D", "rb_3D", "rb_a", "rb_b", "rb_c"]) v[k] = null;
   }
 
   // ---------------- polyhedral connectivity ----------------
