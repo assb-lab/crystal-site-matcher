@@ -189,6 +189,11 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                 <p className="muted small">
                   {t("feat.axes")} {axisLine(grid.Eaxis, Number.isFinite, " eV")}
                 </p>
+                {typeof v.logD === "number" && (
+                  <p className="muted small">
+                    {t("feat.diffusion")} {(["a", "b", "c"] as const).map((k) => `${k} ${fmtD(v[`logD_${k}`])}`).join(" / ")} cm²/s · E<sub>a</sub> {fmtFeature(t, FEATURE_BY_KEY.Ea_D, v.Ea_D)} eV
+                  </p>
+                )}
                 {entry.siteE && entry.siteE.length > 0 && (
                   <p className="muted small">
                     {t("feat.siteE")} {[...new Map(entry.siteE.map((s) => [s.group, s.E])).entries()].map(([g, e]) => `${g} ${Math.abs(e) < 0.005 ? "0.00" : e.toFixed(2)} eV`).join(t("list.sep"))}
@@ -523,6 +528,9 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
     </div>
   );
 }
+
+/** 10^lg as "7.1e-12"; no diffusion along that direction is shown as "–". */
+const fmtD = (lg: unknown) => (typeof lg === "number" ? (10 ** lg).toExponential(1) : "–");
 
 /** "a 0.59 / b 0.59 / c 0.52 eV"; an axis that never opens is shown as "–". */
 function axisLine(vals: number[], ok: (x: number) => boolean, unit: string) {
