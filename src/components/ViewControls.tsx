@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { defaultPolyElements, polyCenterElements, type PolyCenter, type PolyMode, type ViewOptions } from "../lib/scene";
+import { atomSectors, defaultPolyElements, polyCenterElements, type PolyCenter, type PolyMode, type ViewOptions } from "../lib/scene";
 import type { Crystal, Vec3 } from "../lib/structure";
 import type { BondTable } from "../lib/bonding";
 import type { ViewDir } from "./Viewer";
@@ -19,6 +19,7 @@ interface Props {
 export default function ViewControls({ view, setView, onViewDir, crystal, ox, bonds }: Props) {
   const t = useT();
   const els = [...new Set(crystal.sites.map((s) => s.element))];
+  const mixed = crystal.positions.some((p) => atomSectors(crystal, p.index).length > 1);
   const centerEls = polyCenterElements(crystal, ox, view.polyCenter);
   const setCenter = (c: PolyCenter) =>
     setView((o) => (o.polyCenter === c ? o : { ...o, polyCenter: c, polyElements: defaultPolyElements(crystal, ox, bonds, c) }));
@@ -124,6 +125,7 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
 
           <fieldset>
             <legend>{t("view.atoms")}</legend>
+            {mixed && <p className="muted small">{t("view.occupancyColors")}</p>}
             <div className="checks">
               <label htmlFor="show-bonds">
                 <input id="show-bonds" type="checkbox" checked={view.showBonds} onChange={(e) => set("showBonds", e.target.checked)} /> {t("view.bonds")}
