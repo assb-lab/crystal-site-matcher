@@ -86,6 +86,12 @@ try {
       // colour follows the shared bottleneck scale (widest class → green end)
       assert.deepEqual(spec.hopPath.color, sc.hopColor(cls.rb, 0, 0.646));
     }
+    // saddle markers (#27): one per member and cell, shifted with the path
+    const withSaddle = sel.map((h) => ({ ...h, saddle: h.mid }));
+    const sp = sc.buildScene(doc.crystal, bonds, { ...doc.view, supercell: [2, 1, 1] }, null, { selHops: withSaddle });
+    assert.equal(sp.hopPath.saddles.length, sel.length * 2);
+    assert.deepEqual(sp.hopPath.saddles, sp.hopPath.necks);
+    assert.deepEqual(sc.buildScene(doc.crystal, bonds, doc.view, null, { selHops: sel }).hopPath.saddles, []);
     // stable-site markers (#26): boundary images like atoms (a corner site appears at all 8 corners)
     const mk = sc.buildScene(doc.crystal, bonds, doc.view, null, { minima: [{ frac: [0, 0, 0], occupied: false }, { frac: [0.5, 0.5, 0.5], occupied: true }] });
     assert.equal(mk.minima.filter((m) => !m.occupied).length, 8);

@@ -142,6 +142,13 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "site_energy_spread", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "curv_min", unit: "eV/Å²", digits: 2, group: "grid", async: true },
   { key: "curv_aniso", digits: 2, group: "grid", async: true },
+  { key: "hop_barrier_min", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "hop_barrier_mean", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "hop_barrier_sd", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "hop_asymmetry", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_hop_1D", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_hop_2D", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "E_hop_3D", unit: "eV", digits: 3, group: "grid", async: true },
 ];
 
 export const FEATURE_BY_KEY = Object.fromEntries(FEATURE_DEFS.map((f) => [f.key, f])) as Record<string, FeatureDef>;
@@ -181,7 +188,7 @@ export interface Hop {
   mid: Vec3; // Cartesian point of the bottleneck
 }
 
-/** Hops that look the same: same pair of site groups, distance and bottleneck radius (symmetry-equivalent in practice). */
+/** Geometric display groups: same site groups, distance and bottleneck radius; not a symmetry test. */
 export interface HopClass {
   key: string;
   from: string; // site group (the smaller key of the two ends)

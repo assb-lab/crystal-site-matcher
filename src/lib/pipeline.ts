@@ -6,6 +6,8 @@ import { FeatureValue, StaticFeatures, computeStaticFeatures, defaultMobile, ion
 import { FrameworkField, GridResult, computeGrid } from "./bvse";
 import { Crystal, crystalFromCif, formulaString, guessOxidationStates } from "./structure";
 import { EnergyMinimum, findMinima, minimaFeatureValues } from "./landscape";
+import { HopBarrier, hopBarrierFeatureValues, hopBarriers } from "./hopBarriers";
+import type { Hop } from "./features";
 
 export const DEFAULT_HOP_CUTOFF = 4.0; // Å
 export const DEFAULT_GRID_RES = 0.2; // Å
@@ -48,6 +50,8 @@ export interface GridStage {
   siteE: { pos: number; group: string; E: number }[] | null;
   /** Stable sites of the mobile ion on the BVSE landscape (null without energies). */
   minima: EnergyMinimum[] | null;
+  /** BVSE barrier of each hop passed in (same order), null without energies */
+  barriers: (HopBarrier | null)[] | null;
   values: Record<string, FeatureValue>;
 }
 
@@ -86,6 +90,7 @@ export async function gridStage(
   resolution: number,
   onProgress?: (f: number) => void,
   isCancelled?: () => boolean,
+  hops: Hop[] = [],
 ): Promise<GridStage | null> {
   if (!s.mobile) throw new Error("gridStage needs a mobile ion");
   const { bonds } = deriveBonds(s.crystal, s.ox, s.bondSettings);
@@ -94,5 +99,13 @@ export async function gridStage(
   if (!grid) return null;
   const siteE = grid.energy ? mobileSiteEnergies(s.crystal, field, s.mobile, grid.eMinAbs) : null;
   const minima = grid.energy ? findMinima(s.crystal, field, grid, s.mobile) : null;
-  return { grid, siteE, minima, values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima) } };
+  const barriers = await hopBarriers(s.crystal, grid, field, hops, isCancelled);
+  if (isCancelled?.()) return null;
+  return {
+    grid,
+    siteE,
+    minima,
+    barriers,
+    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima), ...hopBarrierFeatureValues(hops, barriers) },
+  };
 }
