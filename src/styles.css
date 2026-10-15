@@ -211,6 +211,25 @@ select {
   letter-spacing: 0.01em;
   line-height: 1.2;
 }
+.brand-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.repo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--accent);
+  background: var(--panel-2);
+  font-size: var(--fs-xs);
+  text-decoration: none;
+}
+.repo-link:hover { background: var(--accent-soft); border-color: var(--accent); }
 .brand-sub {
   margin: 0;
   font-size: var(--fs-xs);
@@ -1329,8 +1348,53 @@ tr.is-host td {
 }
 .side-sample {
   width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--ink);
   font-size: var(--fs-xs);
+  cursor: pointer;
 }
+.side-sample svg { flex: 0 0 auto; }
+.side-sample[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.sample-menu {
+  position: fixed;
+  z-index: 100;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.sample-menu-item {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: var(--fs-s);
+  cursor: pointer;
+}
+.sample-menu-item:hover, .sample-menu-item:focus {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sample-menu-item:focus-visible { outline-offset: -2px; }
+.sample-menu-separator { border-top: 1px solid var(--line); margin: 5px 6px; }
+.sample-menu-all { font-weight: 600; color: var(--accent); }
 @media (hover: none) {
   .side-close {
     opacity: 1;
@@ -1351,6 +1415,7 @@ tr.is-host td {
     justify-content: center;
     width: 5.5rem;
   }
+  .side-bottom { width: 8.5rem; }
   .side-list {
     flex-direction: row;
     overflow-x: auto;
