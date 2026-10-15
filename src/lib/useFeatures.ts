@@ -5,7 +5,6 @@ import { Doc, featureSig } from "./doc";
 import { FeatureValue, StaticFeatures } from "./features";
 import { GridResult } from "./bvse";
 import { gridStage, hasMobile, staticStage } from "./pipeline";
-import { XrdPattern, simulateXrd } from "./xrd";
 import type { EnergyMinimum } from "./landscape";
 import type { HopBarrier } from "./hopBarriers";
 
@@ -14,7 +13,6 @@ export type GridStatus = "pending" | "running" | "done" | "none" | "error";
 export interface FeatureEntry {
   sig: string;
   static: StaticFeatures;
-  xrd: XrdPattern;
   grid: GridResult | null;
   gridStatus: GridStatus;
   gridError?: string;
@@ -65,10 +63,9 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
         if (stale()) return;
         if (needStatic === job) {
           const st = staticStage(job, job.hopCutoff);
-          const xrd = simulateXrd(job.crystal);
           setEntries((e) => ({
             ...e,
-            [job.id]: { sig, static: st, xrd, grid: null, gridStatus: hasMobile(job) ? "pending" : "none", progress: 0, siteE: null, minima: null, barriers: null, values: { ...st.values } },
+            [job.id]: { sig, static: st, grid: null, gridStatus: hasMobile(job) ? "pending" : "none", progress: 0, siteE: null, minima: null, barriers: null, values: { ...st.values } },
           }));
           return;
         }

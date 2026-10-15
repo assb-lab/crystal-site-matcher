@@ -64,6 +64,7 @@ src/lib/          計算ロジック（React・DOM に依存しない。CLI か�
   bvse.ts           BVSE（softBV）場、グリッド計算、線分とイオンの最短距離
   percolation.ts    周期的 union-find（1D/2D/3D 浸透）
   xrd.ts            粉末 XRD
+  patterns.ts       g(r) と XRD のキャッシュ（結晶ごと、表示するときだけ計算。特徴量とは独立）
   pipeline.ts       アプリと CLI で共通の計算手順（構造準備 → 静的特徴量 → グリッド）
   doc.ts            アプリの「開いている構造」（表示設定などを含む）
   useFeatures.ts    アプリ用の非同期計算フック（pipeline.ts を使う）
@@ -78,7 +79,7 @@ tests/            node:test。*-fixture.mjs が vite の ssrLoadModule で src �
 - **UI の文字列はすべて i18n 辞書に置く。** `ja.ts` が基準で、`en.ts` は同じキーを持つ必要があります（型でチェックされます）。キーを追加したら両方に書き、英語表示に日本語が残らないことを確認してください。CSV / CLI の出力は言語設定によらず英語です。
 - **アプリと CLI の計算結果を一致させる。** 計算手順は `pipeline.ts` に置き、`useFeatures.ts` と `src/cli/extract.ts` の両方から使います。片方だけに計算を書かないでください。
 - CLI のバンドルに React を入れないため、`src/lib`、`src/i18n/translate.ts`、`src/i18n/domain.ts` から React を import しないでください。
-- 重い計算（BVSE グリッドなど）は、特徴量タブか比較モードを開いたときだけ実行します。起動時のタブは「構造と結合」です（#4）。
+- 重い計算（BVSE グリッドなど）は、特徴量タブか比較モードを開いたときだけ実行します。起動時のタブは「構造と結合」です（#4）。 g(r) と XRD は「回折・g(r)」タブか比較の重ね描きで必要になったときだけ計算し、特徴量の計算（CLI を含む）には含めません（#41）。
 - TypeScript は strict で、`noUnusedLocals` / `noUnusedParameters` が有効です。書式は既存コードに合わせます（2 スペース、ダブルクォート、長めの行も可）。
 
 ## 計算上の約束事（変えるときは issue で相談）

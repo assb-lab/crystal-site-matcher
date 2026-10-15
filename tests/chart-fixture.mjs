@@ -34,7 +34,6 @@ try {
     const { docFromText, deriveBonds } = await server.ssrLoadModule('/src/lib/doc.ts');
     const { computeStaticFeatures } = await server.ssrLoadModule('/src/lib/features.ts');
     const { default: FeaturesPanel } = await server.ssrLoadModule('/src/components/FeaturesPanel.tsx');
-    const { simulateXrd } = await server.ssrLoadModule('/src/lib/xrd.ts');
     const doc = docFromText(await readFile('src/samples/LiCoO2.cif', 'utf8'), 'LiCoO2.cif', 0);
     const { bonds, table } = deriveBonds(doc.crystal, doc.ox, doc.bondSettings);
     const st = computeStaticFeatures(doc.crystal, doc.ox, bonds, table, { mobileEl: doc.mobile, hopCutoff: doc.hopCutoff });
@@ -49,7 +48,7 @@ try {
     const { I18nProvider } = await server.ssrLoadModule('/src/i18n/index.tsx');
     const props = {
       doc, update: () => {}, entry: {
-        static: st, values: st.values, xrd: simulateXrd(doc.crystal),
+        static: st, values: st.values,
         grid: null, gridStatus: 'pending', siteE: null, progress: 0,
       },
     };

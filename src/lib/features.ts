@@ -8,7 +8,7 @@ import { computeDescriptors } from "./descriptors";
 import { cshm } from "./shape";
 import { FrameworkField } from "./bvse";
 import { PeriodicUnionFind } from "./percolation";
-import { Crystal, Neighbor, Vec3, add, buildNeighborTable, formulaString, toCart } from "./structure";
+import { Crystal, Neighbor, Vec3, add, formulaString, toCart } from "./structure";
 
 export type FeatureValue = number | string | null;
 
@@ -269,7 +269,6 @@ export interface StaticFeatures {
   values: Record<string, FeatureValue>;
   sites: SiteRow[];
   hops: Hop[];
-  prdf: { pair: string; points: { x: number; y: number }[] }[];
   sharing: { frame: Sharing; mm: Sharing; mf: Sharing };
   mobileEl: string | null;
   analyses: SiteAnalysis[];
@@ -625,64 +624,10 @@ export function computeStaticFeatures(
   // ---------------- anion environment, site distributions, mixed sites ----------------
   Object.assign(v, computeDescriptors(cr, ox, bonds, table, analyses, mobileEl, radius));
 
-  // ---------------- partial RDF ----------------
-  const prdf = computePrdf(cr, 8, 0.05);
-
   for (const d of FEATURE_DEFS) if (d.async && !(d.key in v)) v[d.key] = null;
-  return { values: v, sites, hops, prdf, sharing, mobileEl, analyses };
+  return { values: v, sites, hops, sharing, mobileEl, analyses };
 }
 
-export function computePrdf(cr: Crystal, rmax: number, dr: number) {
-  const tbl = buildNeighborTable(cr, rmax);
-  const nb = Math.round(rmax / dr);
-  const hist = new Map<string, Float64Array>();
-  const count: Record<string, number> = {};
-  for (const p of cr.positions) for (const o of p.occupants) count[cr.sites[o.site].element] = (count[cr.sites[o.site].element] ?? 0) + o.occ;
-  const els = Object.keys(count).sort((a, b) => (ELEMENTS[a]?.X ?? 0) - (ELEMENTS[b]?.X ?? 0));
-  for (let i = 0; i < els.length; i++) for (let j = i; j < els.length; j++) hist.set(`${els[i]}–${els[j]}`, new Float64Array(nb));
-  cr.positions.forEach((p, i) => {
-    for (const n of tbl[i]) {
-      const bin = Math.floor(n.d / dr);
-      if (bin >= nb) continue;
-      for (const oa of p.occupants)
-        for (const ob of cr.positions[n.j].occupants) {
-          const A = cr.sites[oa.site].element,
-            B = cr.sites[ob.site].element;
-          const ia = els.indexOf(A),
-            ib = els.indexOf(B);
-          if (ia > ib) continue; // ordered pairs A ≤ B only
-          hist.get(`${A}–${B}`)![bin] += oa.occ * ob.occ;
-        }
-    }
-  });
-  const V = cr.lattice.volume;
-  const out: { pair: string; points: { x: number; y: number }[] }[] = [];
-  for (const [pair, h] of hist) {
-    const [A, B] = pair.split("–");
-    const norm = V / (count[A] * count[B]);
-    // gaussian smoothing (σ = dr)
-    const g = new Float64Array(nb);
-    for (let k = 0; k < nb; k++) {
-      const r = (k + 0.5) * dr;
-      g[k] = (h[k] * norm) / (4 * Math.PI * r * r * dr);
-    }
-    const sm: { x: number; y: number }[] = [];
-    for (let k = 0; k < nb; k++) {
-      let s = 0,
-        w = 0;
-      for (let q = -3; q <= 3; q++) {
-        const kk = k + q;
-        if (kk < 0 || kk >= nb) continue;
-        const ww = Math.exp((-q * q) / 2);
-        s += ww * g[kk];
-        w += ww;
-      }
-      sm.push({ x: +((k + 0.5) * dr).toFixed(3), y: s / w });
-    }
-    if (sm.some((p) => p.y > 0)) out.push({ pair, points: sm });
-  }
-  return out;
-}
 
 /** Site energies (BVSE, relative to the grid minimum) of mobile positions. */
 export function mobileSiteEnergies(cr: Crystal, field: FrameworkField, mobileEl: string, eMinAbs: number) {

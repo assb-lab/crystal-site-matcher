@@ -136,11 +136,10 @@ Li1 Li+ 0 0 0
     const { docFromText } = await server.ssrLoadModule('/src/lib/doc.ts');
     const { default: FeaturesPanel } = await server.ssrLoadModule('/src/components/FeaturesPanel.tsx');
     const { I18nProvider } = await server.ssrLoadModule('/src/i18n/index.tsx');
-    const { simulateXrd } = await server.ssrLoadModule('/src/lib/xrd.ts');
     const doc = docFromText(text, 'LiCoO2.cif', 0);
     const st = p.staticStage(doc, doc.hopCutoff);
     const g = await p.gridStage(doc, 0.3, undefined, undefined, st.hops);
-    const entry = { static: st, values: { ...st.values, ...g.values }, xrd: simulateXrd(doc.crystal), grid: g.grid, gridStatus: 'done', siteE: g.siteE, minima: g.minima, barriers: g.barriers, progress: 1 };
+    const entry = { static: st, values: { ...st.values, ...g.values }, grid: g.grid, gridStatus: 'done', siteE: g.siteE, minima: g.minima, barriers: g.barriers, progress: 1 };
     const render = (lang, e) => renderToStaticMarkup(createElement(I18nProvider, { initial: lang }, createElement(FeaturesPanel, { doc, update: () => {}, entry: e })));
     const ja = render('ja', entry);
     assert.match(ja, /ΔE‡ \(eV\)/);

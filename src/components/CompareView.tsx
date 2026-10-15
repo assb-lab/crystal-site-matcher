@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { Doc } from "../lib/doc";
+import type { Prdf } from "../lib/patterns";
+import { usePatterns } from "../lib/usePatterns";
+import type { XrdPattern } from "../lib/xrd";
 import type { FeatureEntry } from "../lib/useFeatures";
 import { FEATURE_DEFS, FEATURE_BY_KEY, FeatureGroup, GROUPS } from "../lib/features";
 import { BarChart, LineChart, ScatterChart, seriesColor } from "./charts";
@@ -22,10 +25,10 @@ type Curve = "prdf" | "xrd" | "bvse" | "void";
 const GENERIC: Record<string, MsgKey> = { MX: "cmp.pair.MX", MM: "cmp.pair.MM", XX: "cmp.pair.XX" };
 
 /** The element pair of a structure that plays the given role (mobile ion / anion). */
-function genericPair(d: Doc, e: FeatureEntry, kind: string) {
+function genericPair(d: Doc, prdf: Prdf, kind: string) {
   const anions = new Set(d.crystal.sites.filter((s) => (d.ox[s.label] ?? 0) < 0).map((s) => s.element));
   const m = d.mobile;
-  return e.static.prdf.find((p) => {
+  return prdf.find((p) => {
     const [a, b] = p.pair.split("–");
     if (kind === "MX") return !!m && ((a === m && anions.has(b)) || (b === m && anions.has(a)));
     if (kind === "MM") return !!m && a === m && b === m;
@@ -51,22 +54,28 @@ export default function CompareView({ docs, allCount, entries, errors, onOpenDoc
     return s === "pending" || s === "running";
   }).length;
 
-  const pairs = useMemo(() => {
-    const s = new Set<string>();
-    for (const d of docs) for (const p of entries[d.id]?.static.prdf ?? []) s.add(p.pair);
-    return [...s].sort();
-  }, [docs, entries]);
+  // g(r) / XRD come from the pattern cache, computed only while that overlay is shown (#41)
+  const patternOf = usePatterns(
+    docs.map((d) => d.crystal),
+    curve === "prdf" || curve === "xrd" ? curve : null,
+  );
+  const prdfOf = (d: Doc) => (curve === "prdf" ? (patternOf(d.crystal) as Prdf | undefined) : undefined);
+  const pairs = [...new Set(docs.flatMap((d) => prdfOf(d)?.map((p) => p.pair) ?? []))].sort();
   const shownPair = pair && (GENERIC[pair] || pairs.includes(pair)) ? pair : "MX";
 
   const curveSeries = docs.flatMap((d) => {
-    const e = entries[d.id];
-    if (!e) return [];
     const base = { id: d.id, label: d.name, color: seriesColor(d.colorSlot) };
-    if (curve === "xrd") return [{ ...base, points: e.xrd.profile }];
+    if (curve === "xrd") {
+      const x = patternOf(d.crystal) as XrdPattern | undefined;
+      return x ? [{ ...base, points: x.profile }] : [];
+    }
     if (curve === "prdf") {
-      const p = GENERIC[shownPair] ? genericPair(d, e, shownPair) : e.static.prdf.find((x) => x.pair === shownPair);
+      const prdf = prdfOf(d);
+      const p = prdf && (GENERIC[shownPair] ? genericPair(d, prdf, shownPair) : prdf.find((x) => x.pair === shownPair));
       return p ? [{ ...base, label: GENERIC[shownPair] ? `${d.name} (${p.pair})` : d.name, points: p.points }] : [];
     }
+    const e = entries[d.id];
+    if (!e) return [];
     if (curve === "bvse") return e.grid?.energy ? [{ ...base, points: e.grid.energyCurve.map((p) => ({ x: p.x, y: p.y * 100 })) }] : [];
     return e.grid ? [{ ...base, points: e.grid.voidCurve.map((p) => ({ x: p.x, y: p.y * 100 })) }] : [];
   });
