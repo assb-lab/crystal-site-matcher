@@ -1,6 +1,7 @@
 // Periodic union–find: tracks, for every connected cluster in a periodic system,
 // the lattice of "winding" vectors created when the cluster wraps onto itself.
-// The rank of that lattice (0–3) is the dimensionality of percolation.
+// The rank of that lattice (0–3) is the dimensionality of percolation; a lattice axis is open
+// when a multiple of it lies in the winding lattice of some cluster.
 
 type V3 = [number, number, number];
 
@@ -36,6 +37,12 @@ function addBasis(basis: V3[], v: V3): V3[] | null {
   return rankOf(next) > r0 ? next : null;
 }
 
+const AXES: V3[] = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+];
+
 export class PeriodicUnionFind {
   parent: Int32Array;
   // offset of node relative to its parent, in lattice units
@@ -44,6 +51,8 @@ export class PeriodicUnionFind {
   oz: Int32Array;
   basis: Map<number, V3[]> = new Map();
   maxRank = 0;
+  /** Whether some cluster wraps along a / b / c (a multiple of the axis is a winding vector). */
+  axes: [boolean, boolean, boolean] = [false, false, false];
 
   constructor(n: number) {
     this.parent = new Int32Array(n).fill(-1);
@@ -109,6 +118,7 @@ export class PeriodicUnionFind {
         this.basis.set(ri, nb);
         const r = rankOf(nb);
         if (r > this.maxRank) this.maxRank = r;
+        this.openAxes(nb, r);
         return r;
       }
       return rankOf(b);
@@ -129,6 +139,12 @@ export class PeriodicUnionFind {
     if (merged.length) this.basis.set(ri, merged);
     const r = rankOf(merged);
     if (r > this.maxRank) this.maxRank = r;
+    if (bj.length) this.openAxes(merged, r);
     return r;
+  }
+
+  /** Mark the axes lying in the (rational = real) span of an integer winding basis of rank r. */
+  private openAxes(basis: V3[], r: number) {
+    for (let k = 0; k < 3; k++) if (!this.axes[k] && (r === 3 || rankOf([...basis, AXES[k]]) === r)) this.axes[k] = true;
   }
 }
