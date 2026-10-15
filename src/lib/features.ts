@@ -99,6 +99,7 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "ionPot_anion", unit: "e/Å", digits: 3, group: "anion" },
   { key: "ionPot_anion_range", unit: "e/Å", digits: 3, group: "anion" },
   { key: "ionPot_isoAnion", unit: "e/Å", digits: 3, group: "anion" },
+  { key: "ionPot_isoAnion_range", unit: "e/Å", digits: 3, group: "anion" },
   { key: "cn_anion", digits: 2, group: "anion" },
   { key: "cn_anion_sd", digits: 2, group: "anion" },
   // distributions over sites
