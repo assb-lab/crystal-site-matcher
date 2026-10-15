@@ -168,6 +168,8 @@ git diff --stat src/data src/samples   # 差分が出なければ再現できて
 
 MIT License © 2026 assb-lab（[LICENSE](LICENSE)）。同梱データの出典とライセンスは下記のとおりです。
 
+`dist/index.html` と `dist/csm-features.mjs` には、同梱しているライブラリ（React、three.js など）と参照データの出典（pymatgen、BVlain）のライセンス表記を、ファイル先頭のコメントとして埋め込んでいます。同じ内容を [dist/THIRD_PARTY_LICENSES.txt](dist/THIRD_PARTY_LICENSES.txt) にも置いています。ビルド時に、実際にバンドルしたパッケージの LICENSE と `scripts/data-licenses/` から自動で作ります。
+
 ## 出典
 
 - R. D. Shannon, *Acta Cryst.* A32, 751 (1976) — 有効イオン半径・結晶半径

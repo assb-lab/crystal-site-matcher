@@ -44,6 +44,7 @@ pnpm samples             # src/samples/*.cif を生成
   - `engineStrict`
   - `verifyStoreIntegrity`
 - 例外（`trustPolicyExclude` など）が必要なときは、パッケージ全体ではなく**版を固定**します（例: `semver@6.3.1`）。理由もコメントに書いてください。
+- 配布物のライセンス表記は `vite.licenses.ts` がビルド時に作ります（バンドルされた npm パッケージの LICENSE と、`scripts/data-licenses/<name>.txt`）。`scripts/sources.lock` に上流データを追加・更新したときは、そのコミットの LICENSE を `scripts/data-licenses/` に置いてください。CLI がアプリに含まれないパッケージをバンドルするとビルドが止まります。
 - 新しい依存はできるだけ追加しません。たとえば CLI では `@types/node` を入れず、使う Node API だけ `src/cli/node.d.ts` に型宣言しています。追加が必要なら理由を PR に書き、`pnpm-lock.yaml` を更新します。
 - Python（`scripts/`）は uv で管理します。
   - `uv.lock` と `pyproject.toml` の `exclude-newer`（固定日時）と `index-strategy = "first-index"` を維持します。
