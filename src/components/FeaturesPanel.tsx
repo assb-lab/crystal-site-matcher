@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Doc } from "../lib/doc";
 import type { FeatureEntry } from "../lib/useFeatures";
 import { FEATURE_DEFS, FEATURE_BY_KEY, GROUPS, hopClasses } from "../lib/features";
-import { MINIMUM_COLOR, MINIMUM_SITE_COLOR, hopColor } from "../lib/scene";
+import { MINIMUM_COLOR, MINIMUM_SITE_COLOR, SADDLE_COLOR, hopColor } from "../lib/scene";
 import { INTERSTITIAL_E_MAX, minimumClasses } from "../lib/landscape";
 import { bvseSupported } from "../lib/bvse";
 import { shannonRadius } from "../lib/analysis";
@@ -62,6 +62,30 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
   const hopCss = (rb: number) => rgbCss(hopColor(rb, rbLo, rbHi));
   const hopSel = classes.some((c) => c.key === doc.hopSel) ? doc.hopSel : null;
   const pickHop = (key: string) => update((d) => ({ hopSel: d.hopSel === key ? null : key }));
+  // Geometric display classes can contain different barriers; retain their spread.
+  const barriers = entry?.barriers ?? null;
+  const classBarrier = (c: (typeof classes)[number]) => {
+    if (!barriers || !st) return null;
+    const values = c.members.flatMap((i) => {
+      const b = barriers[i];
+      if (!b) return [];
+      const forward = cr.positions[st.hops[i].a].group === c.from;
+      return [{ Esad: b.Esad, there: forward ? b.fwd : b.rev, back: forward ? b.rev : b.fwd }];
+    });
+    if (!values.length) return null;
+    const range = (xs: number[]) => {
+      const lo = Math.min(...xs).toFixed(2), hi = Math.max(...xs).toFixed(2);
+      return lo === hi ? lo : `${lo}–${hi}`;
+    };
+    return {
+      Esad: values.reduce((sum, b) => sum + b.Esad, 0) / values.length,
+      saddleRange: range(values.map((b) => b.Esad)),
+      there: range(values.map((b) => b.there)),
+      back: range(values.map((b) => b.back)),
+    };
+  };
+  const [hopY, setHopY] = useState<"rb" | "barrier">("rb");
+  const yBarrier = hopY === "barrier" && !!barriers;
 
   const copyTsv = () => {
     const lines = FEATURE_DEFS.map((d) => `${groupLabel(t, d.group)}\t${featLabel(t, d.key)}\t${fmtFeature(t, d, v[d.key])}\t${d.unit ?? ""}`);
@@ -248,23 +272,38 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                   </label>
                   <span className="hop-legend small muted">
                     {t("feat.hopColors")} <i style={{ background: "rgb(227,73,72)" }} />{t("feat.narrow")} <i style={{ background: "rgb(237,161,0)" }} /> <i style={{ background: "rgb(27,175,122)" }} />{t("feat.wide")}
+                    {barriers && (
+                      <>
+                        {" · "}
+                        <span className="dot dot-square" style={{ background: rgbCss(SADDLE_COLOR) }} />
+                        {t("feat.saddle")}
+                      </>
+                    )}
                   </span>
+                </div>
+                <div className="seg small" role="radiogroup" aria-label={t("feat.hopY")}>
+                  <button role="radio" aria-checked={!yBarrier} className={!yBarrier ? "is-on" : ""} onClick={() => setHopY("rb")} id="hop-y-rb">
+                    {t("feat.bottleneck")}
+                  </button>
+                  <button role="radio" aria-checked={yBarrier} className={yBarrier ? "is-on" : ""} disabled={!barriers} onClick={() => setHopY("barrier")} id="hop-y-barrier" title={barriers ? undefined : t("feat.barrierPending")}>
+                    {t("feat.barrier")}
+                  </button>
                 </div>
                 <ScatterChart
                   points={classes.map((c) => ({
                     id: c.key,
                     x: c.d,
-                    y: c.rb,
+                    y: yBarrier ? (classBarrier(c)?.Esad ?? NaN) : c.rb,
                     label: `${c.from}→${c.to}`,
                     color: hopCss(c.rb),
-                    detail: t("feat.hopCount", { n: c.members.length }),
+                    detail: yBarrier ? `${t("feat.hopCount", { n: c.members.length })} · ${t("feat.hopSaddleRange", { range: classBarrier(c)?.saddleRange ?? "—" })}` : t("feat.hopCount", { n: c.members.length }),
                   }))}
                   labels={false}
                   xLabel={`${t("feat.hopDist")} (Å)`}
-                  yLabel={`${t("feat.bottleneck")} (Å)`}
+                  yLabel={yBarrier ? `${t("feat.saddleMean")} (eV)` : `${t("feat.bottleneck")} (Å)`}
                   height={220}
                   xFmt={(x) => x.toFixed(3) + " Å"}
-                  yFmt={(y) => y.toFixed(3) + " Å"}
+                  yFmt={(y) => (yBarrier ? y.toFixed(3) + " eV" : y.toFixed(3) + " Å")}
                   r={5}
                   selected={hopSel}
                   onSelect={pickHop}
@@ -280,6 +319,11 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                           r<sub>b</sub> (Å)
                         </th>
                         <th className="num">{t("feat.hopN")}</th>
+                        {barriers && (
+                          <th className="num" title={t("feat.barrierTitle")}>
+                            ΔE‡ (eV)
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -304,12 +348,21 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                           <td className="num mono">{c.d.toFixed(3)}</td>
                           <td className="num mono">{c.rb.toFixed(3)}</td>
                           <td className="num mono">{c.members.length}</td>
+                          {barriers && (
+                            <td className="num mono">
+                              {(() => {
+                                const b = classBarrier(c);
+                                return b ? `${b.there} / ${b.back}` : "—";
+                              })()}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
                 <p className="muted small">{t("feat.bottleneckNote")}</p>
+                {barriers && <p className="muted small">{t("feat.barrierNote")}</p>}
               </>
             )}
           </section>

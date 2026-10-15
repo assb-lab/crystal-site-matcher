@@ -96,6 +96,7 @@ export interface SceneSpec {
 export interface HopPathSpec {
   segs: [Vec3, Vec3][];
   necks: Vec3[]; // bottleneck points
+  saddles: Vec3[]; // BVSE saddle points (when the grid has been computed)
   color: [number, number, number]; // bottleneck colour of the class
 }
 
@@ -114,6 +115,7 @@ export interface SceneHop {
   t: Vec3;
   rb: number;
   mid: Vec3; // Cartesian bottleneck point of the hop that starts in the home cell
+  saddle?: Vec3; // Cartesian BVSE saddle point of the same hop
 }
 
 export interface SceneExtras {
@@ -133,6 +135,8 @@ const RAMP: [number, number, number][] = [
 ];
 /** Marker colour of an empty candidate site (BVSE minimum away from the CIF sites): a cyan no element uses. */
 export const MINIMUM_COLOR: [number, number, number] = [0, 172, 230];
+/** Marker colour of the BVSE saddle on a highlighted hop path: a dark crimson, distinct from the bottleneck scale. */
+export const SADDLE_COLOR: [number, number, number] = [150, 20, 70];
 /** Marker colour of a BVSE minimum at a CIF site: a mid grey that reads on light and dark backgrounds. */
 export const MINIMUM_SITE_COLOR: [number, number, number] = [128, 136, 150];
 
@@ -331,7 +335,7 @@ export function buildScene(
 
   let hopPath: HopPathSpec | null = null;
   if (selHops.length) {
-    hopPath = { segs: [], necks: [], color: hopColor(selHops[0].rb, lo, hi) };
+    hopPath = { segs: [], necks: [], saddles: [], color: hopColor(selHops[0].rb, lo, hi) };
     for (const h of selHops)
       for (const c of cells) {
         const fa = cr.positions[h.a].frac,
@@ -339,6 +343,7 @@ export function buildScene(
         const shift = toCart(L, c);
         hopPath.segs.push([toCart(L, add(fa, c)), toCart(L, add(add(fb, h.t), c))]);
         hopPath.necks.push(add(h.mid, shift));
+        if (h.saddle) hopPath.saddles.push(add(h.saddle, shift));
       }
   }
 

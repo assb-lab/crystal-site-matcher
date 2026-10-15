@@ -28,6 +28,10 @@ export interface HopRecord {
   fromFrac: Vec3;
   toFrac: Vec3; // end point including the lattice translation (may lie outside [0,1))
   neckFrac: Vec3; // point of the bottleneck on the straight path
+  /** BVSE along the best grid path (only with the grid): saddle above the grid minimum, barriers from each end (eV) */
+  Esad: number | null;
+  barrierFwd: number | null;
+  barrierRev: number | null;
 }
 
 /** A stable site of the mobile ion on the BVSE landscape (only with the grid). */
@@ -93,8 +97,9 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
       const values: Record<string, FeatureValue> = { ...st.values };
       for (const k of GRID_KEYS) values[k] ??= null;
       const sites: SiteRecord[] = [];
+      let g: Awaited<ReturnType<typeof gridStage>> = null;
       if (grid !== null && hasMobile(s)) {
-        const g = await gridStage(s, grid);
+        g = await gridStage(s, grid, undefined, undefined, st.hops);
         if (g) Object.assign(values, g.values);
         for (const m of g?.minima ?? [])
           sites.push({ kind: m.occupied ? "site" : "interstitial", E: m.E, frac: m.frac, nearest: m.nearest?.group ?? "", dNearest: m.nearest?.d ?? NaN, curvature: m.curvature });
@@ -102,7 +107,7 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
       const L = s.crystal.lattice;
       const P = s.crystal.positions;
       const hops = st.hops
-        .map((h) => ({
+        .map((h, i) => ({
           from: P[h.a].group,
           to: P[h.b].group,
           d: h.d,
@@ -110,6 +115,9 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
           fromFrac: P[h.a].frac,
           toFrac: add(P[h.b].frac, h.t),
           neckFrac: toFrac(L, h.mid),
+          Esad: g?.barriers?.[i]?.Esad ?? null,
+          barrierFwd: g?.barriers?.[i]?.fwd ?? null,
+          barrierRev: g?.barriers?.[i]?.rev ?? null,
         }))
         .sort((x, y) => x.d - y.d || x.rb - y.rb);
       out.records.push({ file, block: block.name, formula: s.formula, mobile: hasMobile(s) ? s.mobile : null, oxGuessed: s.oxGuessed, ox: s.ox, values, hops, sites });
@@ -152,12 +160,13 @@ export function featureRows(records: StructureRecord[]): string[][] {
   ];
 }
 
-export const HOP_COLUMNS = ["file", "block", "mobile", "from", "to", "d", "rb", "from_x", "from_y", "from_z", "to_x", "to_y", "to_z", "neck_x", "neck_y", "neck_z"];
+export const HOP_COLUMNS = ["file", "block", "mobile", "from", "to", "d", "rb", "from_x", "from_y", "from_z", "to_x", "to_y", "to_z", "neck_x", "neck_y", "neck_z", "E_saddle", "barrier_fwd", "barrier_rev"];
+const opt = (v: number | null) => (v === null ? "" : num(v));
 
 export function hopRows(records: StructureRecord[]): string[][] {
   const rows = [HOP_COLUMNS];
   for (const r of records)
-    for (const h of r.hops) rows.push([r.file, r.block, r.mobile ?? "", h.from, h.to, num(h.d), num(h.rb), ...h.fromFrac.map(coord), ...h.toFrac.map(coord), ...h.neckFrac.map(coord)]);
+    for (const h of r.hops) rows.push([r.file, r.block, r.mobile ?? "", h.from, h.to, num(h.d), num(h.rb), ...h.fromFrac.map(coord), ...h.toFrac.map(coord), ...h.neckFrac.map(coord), opt(h.Esad), opt(h.barrierFwd), opt(h.barrierRev)]);
   return rows;
 }
 
@@ -209,7 +218,7 @@ export function toJson(result: ExtractResult, settings: JsonSettings): string {
           return [d.key, v === undefined || v === null ? null : typeof v === "number" ? (Number.isFinite(v) ? round(v) : null) : cell(d.key, v) || null];
         }),
       ),
-      ...(settings.hops && r.mobile ? { hops: r.hops.map((h) => ({ from: h.from, to: h.to, d: round(h.d), rb: round(h.rb), fromFrac: roundVec(h.fromFrac), toFrac: roundVec(h.toFrac), neckFrac: roundVec(h.neckFrac) })) } : {}),
+      ...(settings.hops && r.mobile ? { hops: r.hops.map((h) => ({ from: h.from, to: h.to, d: round(h.d), rb: round(h.rb), fromFrac: roundVec(h.fromFrac), toFrac: roundVec(h.toFrac), neckFrac: roundVec(h.neckFrac), ...(h.Esad !== null ? { Esad: round(h.Esad), barrierFwd: round(h.barrierFwd!), barrierRev: round(h.barrierRev!) } : {}) })) } : {}),
       ...(settings.sites !== false && r.sites.length
         ? { sites: r.sites.map((s) => ({ kind: s.kind, E: round(s.E), frac: roundVec(s.frac), nearest: s.nearest, dNearest: round(s.dNearest), curvature: s.curvature.map(round) })) }
         : {}),

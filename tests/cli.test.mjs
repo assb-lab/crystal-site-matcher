@@ -24,7 +24,7 @@ test('built CLI (dist/csm-features.mjs) writes features and hops', { skip: !exis
     assert.equal(rows.length, 3);
     assert.ok(rows[0].startsWith('file,block,formula,ox_guessed,a,'));
     const hops = readFileSync(join(dir, 'f.hops.csv'), 'utf8').trim().split('\n');
-    assert.equal(hops[0], 'file,block,mobile,from,to,d,rb,from_x,from_y,from_z,to_x,to_y,to_z,neck_x,neck_y,neck_z');
+    assert.equal(hops[0], 'file,block,mobile,from,to,d,rb,from_x,from_y,from_z,to_x,to_y,to_z,neck_x,neck_y,neck_z,E_saddle,barrier_fwd,barrier_rev');
     assert.equal(hops.filter((l) => l.includes('LiCoO2.cif')).length, 9);
 
     assert.ok(!existsSync(join(dir, 'f.sites.csv')), 'no stable sites without the grid');
