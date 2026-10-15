@@ -4,6 +4,7 @@
 import { BondTable } from "./bonding";
 import { ELEMENTS, IDEAL_POLYHEDRA, IdealPolyhedron } from "./data";
 import { analyzeSite, shannonRadius, SiteAnalysis } from "./analysis";
+import { computeDescriptors } from "./descriptors";
 import { cshm } from "./shape";
 import { FrameworkField } from "./bvse";
 import { PeriodicUnionFind } from "./percolation";
@@ -21,9 +22,9 @@ export interface FeatureDef {
   async?: boolean; // filled by the grid (BVSE / void) calculation
 }
 
-export type FeatureGroup = "lattice" | "packing" | "bv" | "mobile" | "network" | "frame" | "grid";
+export type FeatureGroup = "lattice" | "packing" | "bv" | "mobile" | "network" | "frame" | "anion" | "dist" | "mix" | "grid";
 
-export const GROUPS: FeatureGroup[] = ["lattice", "packing", "bv", "mobile", "network", "frame", "grid"];
+export const GROUPS: FeatureGroup[] = ["lattice", "packing", "bv", "mobile", "network", "frame", "anion", "dist", "mix", "grid"];
 
 export const FEATURE_DEFS: FeatureDef[] = [
   // lattice
@@ -89,6 +90,41 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "frame_isolated", digits: 3, group: "frame" },
   { key: "mm_face", digits: 3, group: "frame" },
   { key: "mf_face", digits: 3, group: "frame" },
+  // anion environment
+  { key: "isoAnion_frac", digits: 3, group: "anion" },
+  { key: "isoAnion_rho", unit: "nm⁻³", digits: 2, group: "anion" },
+  { key: "isoAnion_dXX", unit: "Å", digits: 3, group: "anion" },
+  { key: "isoAnion_cn", digits: 2, group: "anion" },
+  { key: "isoAnion_cshm", digits: 2, group: "anion" },
+  { key: "ionPot_anion", unit: "e/Å", digits: 3, group: "anion" },
+  { key: "ionPot_anion_range", unit: "e/Å", digits: 3, group: "anion" },
+  { key: "ionPot_isoAnion", unit: "e/Å", digits: 3, group: "anion" },
+  { key: "cn_anion", digits: 2, group: "anion" },
+  { key: "cn_anion_sd", digits: 2, group: "anion" },
+  // distributions over sites
+  { key: "cn_mobile_min", digits: 0, group: "dist" },
+  { key: "cn_mobile_max", digits: 0, group: "dist" },
+  { key: "cn_mobile_sd", digits: 2, group: "dist" },
+  { key: "d_mobile_sd", unit: "Å", digits: 3, group: "dist" },
+  { key: "dist_mobile_max", digits: 4, group: "dist" },
+  { key: "dist_mobile_sd", digits: 4, group: "dist" },
+  { key: "cshm_mobile", digits: 2, group: "dist" },
+  { key: "cshm_mobile_max", digits: 2, group: "dist" },
+  { key: "mobile_tet_frac", digits: 3, group: "dist" },
+  { key: "mobile_oct_frac", digits: 3, group: "dist" },
+  { key: "offset_mobile", unit: "Å", digits: 3, group: "dist" },
+  { key: "bvvs_mobile", unit: "v.u.", digits: 3, group: "dist" },
+  { key: "cshm_frame", digits: 2, group: "dist" },
+  { key: "frame_tet_frac", digits: 3, group: "dist" },
+  { key: "frame_oct_frac", digits: 3, group: "dist" },
+  { key: "bvvs_frame", unit: "v.u.", digits: 3, group: "dist" },
+  // mixed sites
+  { key: "mixEntropy_frame", unit: "k_B", digits: 3, group: "mix" },
+  { key: "mixEntropy_anion", unit: "k_B", digits: 3, group: "mix" },
+  { key: "radiusDisorder_frame", digits: 4, group: "mix" },
+  { key: "radiusDisorder_anion", digits: 4, group: "mix" },
+  { key: "chargeDisorder_frame", digits: 3, group: "mix" },
+  { key: "chargeDisorder_anion", digits: 3, group: "mix" },
   // grid
   { key: "E_1D", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "E_2D", unit: "eV", digits: 3, group: "grid", async: true },
@@ -535,6 +571,9 @@ export function computeStaticFeatures(
   v.frame_isolated = frameCount ? frameIsolated / frameCount : null;
   v.mm_face = frac(sharing.mm, "face");
   v.mf_face = frac(sharing.mf, "face");
+
+  // ---------------- anion environment, site distributions, mixed sites ----------------
+  Object.assign(v, computeDescriptors(cr, ox, bonds, table, analyses, mobileEl, radius));
 
   // ---------------- partial RDF ----------------
   const prdf = computePrdf(cr, 8, 0.05);
