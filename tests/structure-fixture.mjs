@@ -1,4 +1,4 @@
-// Checks of crystal construction (src/lib/structure.ts): cell validation (#44) and periodic distances in oblique cells (#43).
+// Checks of crystal construction (src/lib/structure.ts): cell validation (#44), periodic distances (#43) and XRD (#42) in oblique cells.
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 
@@ -135,6 +135,23 @@ ${rows.join('\n')}
 `;
       return p.prepareStructure(blocksWithAtoms(text)[0], { oxOverride: ox });
     };
+    // XRD (#42): the same peaks (positions, intensities, multiplicities) in any basis; the hkl labels may differ
+    const { simulateXrd } = await server.ssrLoadModule('/src/lib/xrd.ts');
+    const samePattern = (x0, x1, msg) => {
+      assert.deepEqual(x1.peaks.map((q) => q.twoTheta.toFixed(4)), x0.peaks.map((q) => q.twoTheta.toFixed(4)), `${msg}: peak positions`);
+      x0.peaks.forEach((q, i) => {
+        assert.ok(Math.abs(x1.peaks[i].intensity - q.intensity) < 1e-6 * Math.max(1, q.intensity), `${msg}: intensity at ${q.twoTheta}`);
+        assert.equal(x1.peaks[i].mult, q.mult, `${msg}: multiplicity at ${q.twoTheta}`);
+      });
+    };
+    {
+      // the issue: Li at the origin of A = (3,0,0), B = (0,0.6,0), C = (0,0,3) and of A, B + 3A, C
+      const li = (a, b, c, ga) => S.crystalFromCif(parseCif(cif(a, b, c, 90, 90, ga))[0]);
+      const ortho = simulateXrd(li(3, 0.6, 3, 90));
+      const skew = simulateXrd(li(3, Math.hypot(9, 0.6), 3, deg(Math.atan2(0.6, 9))));
+      for (const t of [29.7566, 42.5842, 61.7989, 70.0799]) assert.ok(ortho.peaks.some((q) => Math.abs(q.twoTheta - t) < 1e-3), `orthogonal cell: ${t}°`);
+      samePattern(ortho, skew, 'Li, B + 3A');
+    }
     for (const [f, m] of [['LiCoO2', 4], ['Li3N', 5], ['LiFePO4', 3]]) {
       const s0 = p.prepareStructure(blocksWithAtoms(await readFile(`src/samples/${f}.cif`, 'utf8'))[0]);
       const s1 = skewed(s0.crystal, s0.ox, m);
@@ -160,6 +177,7 @@ ${rows.join('\n')}
       assert.equal(g1.values.site_recovery, g0.values.site_recovery, `${f}: site_recovery`);
       assert.ok(Math.abs(g1.values.site_spacing - g0.values.site_spacing) < 0.05, `${f}: site_spacing ${g1.values.site_spacing} vs ${g0.values.site_spacing}`);
       assert.ok(Math.abs(g1.values.E_1D - g0.values.E_1D) < 0.05, `${f}: E_1D ${g1.values.E_1D} vs ${g0.values.E_1D}`);
+      samePattern(simulateXrd(s0.crystal), simulateXrd(s1.crystal), f);
     }
   }
 } finally {
