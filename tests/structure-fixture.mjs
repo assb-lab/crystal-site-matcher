@@ -41,6 +41,9 @@ Li1 Li+ 0 0 0
   rejects('err.cell.length', 3, -3, 3, 90, 90, 90);
   rejects('err.cell.length', 3, 3, 0, 90, 90, 90);
   rejects('err.noCell', '?', 3, 3, 90, 90, 90);
+  for (const token of ['bad', 'NaN', 'Infinity', '90degrees', '90(1)garbage']) rejects('err.cell.angle', 3, 3, 3, token, 90, 90);
+  for (const size of ['1e200', '1e-200']) rejects('err.cell.numeric', size, size, size, 90, 90, 90);
+  assert.equal(build(3, 3, 3, '9e1(2)', '90.0(1)', 90).lattice.volume, 27, 'valid uncertainty and exponent');
   assert.equal(S.cellProblem(3, 3, 3, 10, 10, 170), 'volume');
   assert.equal(S.cellProblem(3, 3, 3, 90, 90, 90), null);
 
@@ -57,6 +60,12 @@ Li1 Li+ 0 0 0
   assert.equal(build(3, 4, 5).lattice.volume, 60);
   assert.equal(build(3, 4, 5, '?', '.', 90).lattice.gamma, 90);
 
+  for (const params of [[3, 3, 3, 'bad', 90, 90], ['1e200', '1e200', '1e200', 90, 90, 90], ['1e-200', '1e-200', '1e-200', 90, 90, 90]]) {
+    const result = await x.extractFromText(cif(...params), 'invalid.cif', { grid: null });
+    assert.equal(result.records.length, 0);
+    assert.equal(result.errors.length, 1);
+    assert.doesNotMatch(result.errors[0].message, /[ぁ-んァ-ヶ一-龯]/);
+  }
   // the CLI reports the error in English and produces no record (no NaN downstream)
   const r = await x.extractFromText(cif(3, 3, 3, 10, 10, 170), 'bad.cif', { grid: null });
   assert.equal(r.records.length, 0);
@@ -73,6 +82,28 @@ Li1 Li+ 0 0 0
     const L = S.makeLattice(3, Math.hypot(15, 0.6), 3, 90, 90, deg(Math.atan2(0.6, 15)));
     assert.ok(Math.abs(S.pbcDist(L, [0, 0, 0], [0, 0.4, 0]) - 0.24) < 1e-9, `0.24 Å: ${S.pbcDist(L, [0, 0, 0], [0, 0.4, 0])}`);
 
+    // Former rectangular bounds contained ~59 billion candidates at m=500.
+    for (const m of [20, 50, 100, 500]) {
+      const skew = S.makeLattice(3, Math.hypot(3 * m, 3), 3, 90, 90, deg(Math.atan2(3, 3 * m)));
+      const x = 0.49 * m;
+      const expected = 3 * Math.hypot(x - Math.round(x), 0.49);
+      for (let repeat = 0; repeat < 10; repeat++) assert.ok(Math.abs(S.pbcDist(skew, [0, 0, 0], [0, 0.49, 0]) - expected) < 1e-8);
+    }
+    // Very unequal orthogonal axes must not produce a large sphere scan either.
+    const long = S.makeLattice(100000, 3, 3, 90, 90, 90);
+    assert.ok(Math.abs(S.pbcDist(long, [0, 0, 0], [0.49, 0.49, 0.49]) - Math.hypot(49000, 1.47, 1.47)) < 1e-7);
+    const huge = S.makeLattice(1e200, 3, 3, 90, 90, 90);
+    assert.ok(Math.abs(S.pbcDist(huge, [0, 0, 0], [0.49, 0, 0]) / 4.9e199 - 1) < 1e-12);
+    // Independent exhaustive reference on skewed 3D metrics (deterministic point pairs).
+    for (const params of [[3, 4, 5, 71, 82, 95], [3, 4, 5, 90, 90, 12], [5, 4, 3, 32, 48, 28]]) {
+      const lattice = S.makeLattice(...params);
+      for (let point = 0; point < 25; point++) {
+        const f = [(point * 0.137) % 1, (point * 0.317) % 1, (point * 0.571) % 1];
+        let reference = Infinity;
+        for (let i = -10; i <= 10; i++) for (let j = -10; j <= 10; j++) for (let k = -10; k <= 10; k++) reference = Math.min(reference, S.norm(S.toCart(lattice, [f[0] + i, f[1] + j, f[2] + k])));
+        assert.ok(Math.abs(S.pbcDist(lattice, [0, 0, 0], f) - reference) < 1e-9, `sphere versus reference: ${params}, ${f}`);
+      }
+    }
     // the same crystal written in a skewed basis A' = A, B' = B + m A, C' = C (P1, every position listed)
     const skewed = (cr, ox, m) => {
       const { A, B, C } = cr.lattice;
