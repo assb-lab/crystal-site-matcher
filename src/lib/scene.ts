@@ -4,6 +4,8 @@ import { elementColor, ELEMENTS } from "./data";
 import { Crystal, Vec3, add, toCart } from "./structure";
 
 export type PolyMode = "elements" | "selected" | "none";
+/** Which ions sit at the centre of the polyhedra drawn in "elements" mode. */
+export type PolyCenter = "cation" | "anion";
 
 export interface ViewOptions {
   supercell: Vec3;
@@ -15,6 +17,7 @@ export interface ViewOptions {
   bondRadius: number;
   polyOpacity: number;
   hiddenElements: string[];
+  polyCenter: PolyCenter;
   polyElements: string[]; // centre elements whose polyhedra are drawn in "elements" mode
   showHops: boolean; // migration hops between mobile-ion sites
   showIso: boolean; // BVSE isosurface of the mobile ion
@@ -31,6 +34,7 @@ export const DEFAULT_VIEW: ViewOptions = {
   bondRadius: 0.09,
   polyOpacity: 0.45,
   hiddenElements: [],
+  polyCenter: "cation",
   polyElements: [],
   showHops: false,
   showIso: false,
@@ -117,14 +121,26 @@ export function parseAtomKey(key: string): { pos: number; t: Vec3 } {
   return { pos: parseInt(p, 10), t: ts.split(",").map((x) => parseInt(x, 10)) as Vec3 };
 }
 
-/** Default polyhedron centres: cation species whose coordination number is at most 6. */
-export function defaultPolyElements(cr: Crystal, ox: Record<string, number>, bonds: BondTable): string[] {
+const signOf = (center: PolyCenter) => (center === "cation" ? 1 : -1);
+
+/** Elements that can be polyhedron centres: species with the charge sign of `center`. */
+export function polyCenterElements(cr: Crystal, ox: Record<string, number>, center: PolyCenter): string[] {
+  const sg = signOf(center);
+  return [...new Set(cr.sites.filter((s) => Math.sign(ox[s.label] ?? 0) === sg).map((s) => s.element))];
+}
+
+/**
+ * Default polyhedron centres: cation species whose coordination number is at most 6,
+ * or, for anion-centred polyhedra, every anion species (their CN is often 8–12, e.g. NLi₈ in Li₃N).
+ */
+export function defaultPolyElements(cr: Crystal, ox: Record<string, number>, bonds: BondTable, center: PolyCenter = "cation"): string[] {
+  const sg = signOf(center);
   const out = new Set<string>();
   for (const g of cr.groups) {
     const p = cr.positions[g.positions[0]];
     const s = cr.sites[p.main];
     const cn = bonds.bonded[p.index].length;
-    if ((ox[s.label] ?? 0) > 0 && cn >= 3 && cn <= 6) out.add(s.element);
+    if (Math.sign(ox[s.label] ?? 0) === sg && cn >= 3 && (center === "anion" || cn <= 6)) out.add(s.element);
   }
   return [...out];
 }

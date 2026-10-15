@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { ViewOptions, PolyMode } from "../lib/scene";
+import { defaultPolyElements, polyCenterElements, type PolyCenter, type PolyMode, type ViewOptions } from "../lib/scene";
 import type { Crystal, Vec3 } from "../lib/structure";
+import type { BondTable } from "../lib/bonding";
 import type { ViewDir } from "./Viewer";
 import { elementColor } from "../lib/data";
 import { rgbCss } from "../lib/format";
@@ -12,12 +13,15 @@ interface Props {
   onViewDir: (d: ViewDir) => void;
   crystal: Crystal;
   ox: Record<string, number>;
+  bonds: BondTable;
 }
 
-export default function ViewControls({ view, setView, onViewDir, crystal, ox }: Props) {
+export default function ViewControls({ view, setView, onViewDir, crystal, ox, bonds }: Props) {
   const t = useT();
   const els = [...new Set(crystal.sites.map((s) => s.element))];
-  const cationEls = [...new Set(crystal.sites.filter((s) => (ox[s.label] ?? 0) > 0).map((s) => s.element))];
+  const centerEls = polyCenterElements(crystal, ox, view.polyCenter);
+  const setCenter = (c: PolyCenter) =>
+    setView((o) => (o.polyCenter === c ? o : { ...o, polyCenter: c, polyElements: defaultPolyElements(crystal, ox, bonds, c) }));
   const set = <K extends keyof ViewOptions>(k: K, v: ViewOptions[K]) => setView((o) => ({ ...o, [k]: v }));
   const toggleIn = (k: "polyElements" | "hiddenElements", el: string) =>
     setView((o) => ({ ...o, [k]: o[k].includes(el) ? o[k].filter((x) => x !== el) : [...o[k], el] }));
@@ -85,8 +89,26 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox }: 
               ))}
             </div>
             {view.polyMode === "elements" && (
+              <div className="field-inline">
+                <span>{t("view.poly.center")}</span>
+                <div className="seg" role="radiogroup" aria-label={t("view.poly.center")}>
+                {(
+                  [
+                    ["cation", t("view.poly.cation")],
+                    ["anion", t("view.poly.anion")],
+                  ] as [PolyCenter, string][]
+                ).map(([k, l]) => (
+                  <button key={k} role="radio" aria-checked={view.polyCenter === k} className={view.polyCenter === k ? "is-on" : ""} onClick={() => setCenter(k)} id={`poly-center-${k}`}>
+                    {l}
+                  </button>
+                ))}
+                </div>
+              </div>
+            )}
+            {view.polyMode === "elements" && (
               <div className="chips">
-                {cationEls.map((el) => (
+                {centerEls.length === 0 && <span className="muted small">{t("view.poly.noCenter")}</span>}
+                {centerEls.map((el) => (
                   <button key={el} className={`elchip ${view.polyElements.includes(el) ? "is-on" : ""}`} onClick={() => toggleIn("polyElements", el)} aria-pressed={view.polyElements.includes(el)}>
                     <i style={{ background: rgbCss(elementColor(el)) }} />
                     {el}
