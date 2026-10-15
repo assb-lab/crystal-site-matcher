@@ -193,6 +193,9 @@ export class FrameworkField {
   }
 }
 
+/** Energy above E_1D (eV) at which the connected low-energy volume is measured. */
+export const CONN_DE = 0.2;
+
 export interface GridResult {
   n: Vec3;
   resolution: number;
@@ -203,6 +206,8 @@ export interface GridResult {
   R: [number, number, number]; // percolation radii 1D/2D/3D (NaN if none)
   Eaxis: [number, number, number]; // percolation energies along a / b / c (Infinity if none below cap)
   Raxis: [number, number, number]; // percolation radii along a / b / c (NaN if none)
+  /** At E_1D + CONN_DE: volume fraction below that energy, and the part of it in clusters that wrap the cell (null without 1D) */
+  conn: { low: number; connected: number } | null;
   maxVoid: number;
   energyCurve: { x: number; y: number }[]; // ΔE → accessible volume fraction
   voidCurve: { x: number; y: number }[]; // probe radius → accessible volume fraction
@@ -275,15 +280,28 @@ export async function computeGrid(
   };
 
   type Triple = [number, number, number];
-  /** Flood the grid in the given order; record the value at which the active set first percolates in 1D/2D/3D and along a/b/c. */
-  const percolate = (order: Uint32Array, val: (idx: number) => number, stop: (v: number) => boolean): { dim: Triple; axis: Triple } => {
+  /**
+   * Flood the grid in the given order; record the value at which the active set first percolates in 1D/2D/3D and along a/b/c.
+   * With `connDelta`, also measure the active volume once the value passes the 1D threshold by that much.
+   */
+  const percolate = (order: Uint32Array, val: (idx: number) => number, stop: (v: number) => boolean, connDelta?: number) => {
     const uf = new PeriodicUnionFind(N);
     const dim: Triple = [NaN, NaN, NaN];
     const axis: Triple = [NaN, NaN, NaN];
-    for (let q = 0; q < order.length; q++) {
+    let conn: GridResult["conn"] = null;
+    /** the first q nodes of `order` are active: their volume fraction and the part in wrapping (rank ≥ 1) clusters */
+    const measure = (q: number) => {
+      let wrapped = 0;
+      for (let r = 0; r < q; r++) if (uf.basis.get(uf.find(order[r])[0])?.length) wrapped++;
+      return { low: q / N, connected: wrapped / N };
+    };
+    let q = 0;
+    for (; q < order.length; q++) {
       const idx = order[q];
       const v = val(idx);
+      if (connDelta !== undefined && !conn && !Number.isNaN(dim[0]) && v > dim[0] + connDelta) conn = measure(q);
       if (stop(v)) break;
+      if (uf.maxRank === 3 && (connDelta === undefined || conn)) break;
       uf.make(idx);
       for (const [nb, s] of neighbors(idx)) {
         if (!uf.active(nb)) continue;
@@ -292,9 +310,9 @@ export async function computeGrid(
         if (uf.maxRank > before) for (let d = before; d < uf.maxRank; d++) if (Number.isNaN(dim[d])) dim[d] = v;
         for (let k = 0; k < 3; k++) if (uf.axes[k] && Number.isNaN(axis[k])) axis[k] = v;
       }
-      if (uf.maxRank === 3) break;
     }
-    return { dim, axis };
+    if (connDelta !== undefined && !conn && !Number.isNaN(dim[0])) conn = measure(q);
+    return { dim, axis, conn };
   };
 
   const sortBy = (arr: Float32Array, asc: boolean) => {
@@ -305,10 +323,12 @@ export async function computeGrid(
 
   let E: Triple = [Infinity, Infinity, Infinity];
   let Eaxis: Triple = [Infinity, Infinity, Infinity];
+  let conn: GridResult["conn"] = null;
   const energyCurve: { x: number; y: number }[] = [];
   if (energy) {
     const ord = sortBy(energy, true);
-    const p = percolate(ord, (i) => energy[i], (v) => v > opts.eCap);
+    const p = percolate(ord, (i) => energy[i], (v) => v > opts.eCap, CONN_DE);
+    conn = p.conn;
     const inf = (t: Triple) => t.map((v) => (Number.isNaN(v) ? Infinity : v)) as Triple;
     E = inf(p.dim);
     Eaxis = inf(p.axis);
@@ -335,5 +355,5 @@ export async function computeGrid(
       voidCurve.unshift({ x, y: q / N });
     }
   }
-  return { n, resolution: res, energy, voids, eMinAbs, E, R, Eaxis, Raxis, maxVoid, energyCurve, voidCurve, setup: field.setup };
+  return { n, resolution: res, energy, voids, eMinAbs, E, R, Eaxis, Raxis, conn, maxVoid, energyCurve, voidCurve, setup: field.setup };
 }

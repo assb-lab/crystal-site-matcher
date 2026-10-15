@@ -3,9 +3,13 @@
 // point is the saddle; barriers are measured from the BVSE at the two CIF sites.
 
 import type { FrameworkField, GridResult } from "./bvse";
-import type { Hop } from "./features";
+import { type Hop, hopClasses } from "./features";
+import { pbcDist } from "./landscape";
 import { PeriodicUnionFind } from "./percolation";
 import { Crystal, Vec3, toCart } from "./structure";
+
+/** Saddles closer than this (Å, periodic) are one bottleneck window when testing the bypass. */
+export const BYPASS_WINDOW = 0.5;
 
 /** Tube radius around the straight hop line (Å): max(HOP_TUBE_MIN, d · HOP_TUBE_FRAC). */
 export const HOP_TUBE_MIN = 1.5;
@@ -175,37 +179,76 @@ export async function hopBarriers(cr: Crystal, grid: GridResult, field: Framewor
   return out;
 }
 
-/** Feature values from the per-hop barriers (grid group). */
-export function hopBarrierFeatureValues(hops: Hop[], barriers: (HopBarrier | null)[] | null): Record<string, number | null> {
-  const keys = ["hop_barrier_min", "hop_barrier_mean", "hop_barrier_sd", "hop_asymmetry", "E_hop_1D", "E_hop_2D", "E_hop_3D", "E_hop_a", "E_hop_b", "E_hop_c"];
-  const ok = barriers ? hops.map((h, i) => ({ h, b: barriers[i] })).filter((x): x is { h: Hop; b: HopBarrier } => !!x.b) : [];
-  if (!ok.length) return Object.fromEntries(keys.map((k) => [k, null]));
-  // one barrier per hop: from the lower of its two sites
-  const bs = ok.map(({ b }) => Math.max(b.fwd, b.rev));
-  const mean = bs.reduce((a, b) => a + b, 0) / bs.length;
-  // connect the hop network in order of increasing saddle energy, as rb_1D/2D/3D does with bottlenecks
+type Barriered = { h: Hop; b: HopBarrier; i: number };
+
+/** Connect hops in order of increasing saddle energy: the energies at which the network first spans 1D/2D/3D and each axis. */
+function networkThresholds(ok: Barriered[]) {
   const nodes = [...new Set(ok.flatMap(({ h }) => [h.a, h.b]))];
   const idx = new Map(nodes.map((p, i) => [p, i]));
   const uf = new PeriodicUnionFind(nodes.length);
   nodes.forEach((_, i) => uf.make(i));
-  const Ed: (number | null)[] = [null, null, null];
-  const Eax: (number | null)[] = [null, null, null];
-  for (const { h, b } of [...ok].sort((x, y) => x.b.Esad - y.b.Esad)) {
+  const dim: (number | null)[] = [null, null, null];
+  const axis: (number | null)[] = [null, null, null];
+  const completes: (number | null)[] = [null, null, null]; // hop index that completed each dimension
+  for (const { h, b, i } of [...ok].sort((x, y) => x.b.Esad - y.b.Esad)) {
     const before = uf.maxRank;
     uf.union(idx.get(h.a)!, idx.get(h.b)!, h.t);
-    for (let d = before; d < uf.maxRank; d++) Ed[d] = b.Esad;
-    for (let k = 0; k < 3; k++) if (uf.axes[k] && Eax[k] === null) Eax[k] = b.Esad;
+    for (let d = before; d < uf.maxRank; d++) {
+      dim[d] = b.Esad;
+      completes[d] = i;
+    }
+    for (let k = 0; k < 3; k++) if (uf.axes[k] && axis[k] === null) axis[k] = b.Esad;
+  }
+  return { dim, axis, completes, rank: uf.maxRank };
+}
+
+/** Feature values from the per-hop barriers (grid group). */
+export function hopBarrierFeatureValues(cr: Crystal, hops: Hop[], barriers: (HopBarrier | null)[] | null): Record<string, number | null> {
+  const keys = ["hop_barrier_min", "hop_barrier_mean", "hop_barrier_sd", "hop_asymmetry", "E_hop_1D", "E_hop_2D", "E_hop_3D", "E_hop_a", "E_hop_b", "E_hop_c", "trap_max", "trap_mean", "hop_bypass_dim", "E_hop_bypass", "dE_hop_bypass"];
+  const ok = barriers ? hops.map((h, i) => ({ h, b: barriers[i], i })).filter((x): x is Barriered => !!x.b) : [];
+  if (!ok.length) return Object.fromEntries(keys.map((k) => [k, null]));
+  // one barrier per hop: from the lower of its two sites
+  const bs = ok.map(({ b }) => Math.max(b.fwd, b.rev));
+  const mean = bs.reduce((a, b) => a + b, 0) / bs.length;
+  // as rb_1D/2D/3D does with bottlenecks
+  const net = networkThresholds(ok);
+
+  // escape barrier of each CIF position: the lowest barrier of the hops leaving it
+  const escape = new Map<number, number>();
+  const leave = (pos: number, e: number) => escape.set(pos, Math.min(escape.get(pos) ?? Infinity, e));
+  for (const { h, b } of ok) {
+    leave(h.a, b.fwd);
+    leave(h.b, b.rev);
+  }
+  const traps = [...escape.values()];
+
+  // robustness: block the bottleneck windows of the group of look-alike hops (HopClass) that completed the highest
+  // dimension, i.e. drop every hop whose saddle lies in one of them (longer hops often cross the same window), and connect again
+  const D = net.rank;
+  let bypass: { dim: number; E: number | null } | null = null;
+  if (D > 0) {
+    const L = cr.lattice;
+    const fracOf = (c: Vec3) => [0, 1, 2].map((r) => L.inv[r][0] * c[0] + L.inv[r][1] * c[1] + L.inv[r][2] * c[2]) as Vec3;
+    const critical = hopClasses(cr, hops).find((c) => c.members.includes(net.completes[D - 1]!))!;
+    const windows = critical.members.flatMap((i) => (barriers![i] ? [fracOf(barriers![i]!.saddle)] : []));
+    const rest = networkThresholds(ok.filter(({ b }) => !windows.some((w) => pbcDist(cr, fracOf(b.saddle), w) <= BYPASS_WINDOW)));
+    bypass = { dim: rest.rank, E: rest.dim[D - 1] };
   }
   return {
     hop_barrier_min: Math.min(...bs),
     hop_barrier_mean: mean,
     hop_barrier_sd: Math.sqrt(bs.reduce((s, x) => s + (x - mean) ** 2, 0) / bs.length),
     hop_asymmetry: ok.reduce((s, { b }) => s + Math.abs(b.Ea - b.Eb), 0) / ok.length,
-    E_hop_1D: Ed[0],
-    E_hop_2D: Ed[1],
-    E_hop_3D: Ed[2],
-    E_hop_a: Eax[0],
-    E_hop_b: Eax[1],
-    E_hop_c: Eax[2],
+    E_hop_1D: net.dim[0],
+    E_hop_2D: net.dim[1],
+    E_hop_3D: net.dim[2],
+    E_hop_a: net.axis[0],
+    E_hop_b: net.axis[1],
+    E_hop_c: net.axis[2],
+    trap_max: Math.max(...traps),
+    trap_mean: traps.reduce((a, b) => a + b, 0) / traps.length,
+    hop_bypass_dim: bypass ? bypass.dim : null,
+    E_hop_bypass: bypass?.E ?? null,
+    dE_hop_bypass: bypass?.E != null ? bypass.E - net.dim[D - 1]! : null,
   };
 }

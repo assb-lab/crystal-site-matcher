@@ -85,12 +85,12 @@ _atom_site_fract_z
 Li1 Li+ 0 0 0
 `)[0]).crystal;
     const site = (frac) => ({ frac, E: 0, occupied: true, curvature: [1, 1, 1] });
-    near(L.minimaFeatureValues(cell(3, 3, 3), [site([0, 0, 0])]).site_spacing, 3, 1e-9, 'one site in a primitive cell');
-    near(L.minimaFeatureValues(cell(6, 3, 3), [site([0, 0, 0]), site([0.5, 0, 0])]).site_spacing, 3, 1e-9, 'same crystal in a supercell');
-    near(L.minimaFeatureValues(cell(1, 10, 10), [site([0, 0, 0]), site([0, 0.5, 0])]).site_spacing, 1, 1e-9, 'self image nearer than the other site');
+    near(L.minimaFeatureValues(cell(3, 3, 3), [site([0, 0, 0])], 'Li').site_spacing, 3, 1e-9, 'one site in a primitive cell');
+    near(L.minimaFeatureValues(cell(6, 3, 3), [site([0, 0, 0]), site([0.5, 0, 0])], 'Li').site_spacing, 3, 1e-9, 'same crystal in a supercell');
+    near(L.minimaFeatureValues(cell(1, 10, 10), [site([0, 0, 0]), site([0, 0.5, 0])], 'Li').site_spacing, 1, 1e-9, 'self image nearer than the other site');
     const gamma = Math.atan2(0.6, 9) * 180 / Math.PI;
-    near(L.minimaFeatureValues(cell(3, Math.hypot(9, 0.6), 10, gamma), [site([0, 0, 0])]).site_spacing, 0.6, 1e-8, 'shortest translation is B minus 3A');
-    assert.equal(L.minimaFeatureValues(cell(3, 3, 3), []).site_spacing, null);
+    near(L.minimaFeatureValues(cell(3, Math.hypot(9, 0.6), 10, gamma), [site([0, 0, 0])], 'Li').site_spacing, 0.6, 1e-8, 'shortest translation is B minus 3A');
+    assert.equal(L.minimaFeatureValues(cell(3, 3, 3), [], 'Li').site_spacing, null);
   }
 
   // minimum classes group equivalent minima

@@ -100,7 +100,7 @@ Li1 Li+ 0 0 0
     const hops = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((t) => ({ a: 0, b: 0, t, d: 3, rb: 0.5, mid: t.map((v) => 1.5 * v) }));
     assert.equal(hopClasses(crystal, hops).length, 1, 'one geometric display group');
     const bs = await HB.hopBarriers(crystal, { energy, n: [12, 12, 12], eMinAbs: 0 }, field, hops);
-    const v = HB.hopBarrierFeatureValues(hops, bs);
+    const v = HB.hopBarrierFeatureValues(crystal, hops, bs);
     [0.1, 1, 2].forEach((want, i) => {
       near(bs[i].Esad, want, 1e-6, `axis ${i} saddle`);
       near(E(...bs[i].saddle), want, 1e-6, `axis ${i} marker`);
