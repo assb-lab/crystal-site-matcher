@@ -4,6 +4,7 @@ import SitePanel from "./SitePanel";
 import SubstitutionPanel from "./SubstitutionPanel";
 import StructurePanel from "./StructurePanel";
 import FeaturesPanel, { autoIsoLevel } from "./FeaturesPanel";
+import PatternsPanel from "./PatternsPanel";
 import ViewControls from "./ViewControls";
 import { Doc, createDoc, deriveBonds } from "../lib/doc";
 import { BondSettings, pairKey } from "../lib/bonding";
@@ -14,7 +15,7 @@ import type { FeatureEntry } from "../lib/useFeatures";
 import { hopClasses } from "../lib/features";
 import { useT, type MsgKey } from "../i18n";
 
-export type Tab = "site" | "subst" | "feat" | "struct";
+export type Tab = "site" | "subst" | "feat" | "pattern" | "struct";
 
 /** Isosurface colour: a magenta that no element in the VESTA scheme uses, so it reads against polyhedra. */
 const ISO_COLOR: [number, number, number] = [226, 54, 150];
@@ -144,7 +145,7 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
     }
   };
 
-  const tabs: Tab[] = ["struct", "site", "subst", "feat"];
+  const tabs: Tab[] = ["struct", "site", "subst", "feat", "pattern"];
 
   return (
     <main className="layout">
@@ -221,6 +222,7 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
           )}
           {tab === "subst" && <SubstitutionPanel analysis={analysis} crystal={crystal} onSelectGroup={selectGroup} />}
           {tab === "feat" && <FeaturesPanel doc={doc} update={update} entry={entry} error={featError} />}
+          {tab === "pattern" && <PatternsPanel doc={doc} />}
           {tab === "struct" && (
             <StructurePanel
               crystal={crystal}

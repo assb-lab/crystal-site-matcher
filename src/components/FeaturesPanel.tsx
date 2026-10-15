@@ -40,19 +40,6 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
   const v = entry?.values ?? {};
   const st = entry?.static;
   const grid = entry?.grid;
-  const anionEls = [...new Set(cr.sites.filter((s) => (doc.ox[s.label] ?? 0) < 0).map((s) => s.element))];
-  const defaultPairs = useMemo(() => {
-    const m = doc.mobile;
-    const pairs = st?.prdf.map((p) => p.pair) ?? [];
-    const pick = pairs.filter((p) => {
-      const [a, b] = p.split("–");
-      return (m && (a === m || b === m)) || (anionEls.includes(a) && anionEls.includes(b));
-    });
-    return pick.length ? pick.slice(0, 4) : pairs.slice(0, 3);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [st, doc.mobile]);
-  const [pairs, setPairs] = useState<string[] | null>(null);
-  const shownPairs = (pairs ?? defaultPairs).filter((p) => st?.prdf.some((x) => x.pair === p));
   const rM = doc.mobile ? shannonRadius(doc.mobile, Math.round(mobileQ), 6, { kind: "ionic" }) : null;
   const isoLevel = doc.view.isoLevel ?? autoIsoLevel(entry);
   const setView = (patch: Partial<Doc["view"]>) => update((d) => ({ view: { ...d.view, ...patch } }));
@@ -383,37 +370,6 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
           {st && (
             <section className="card">
               <div className="card-head">
-                <h2>{t("feat.prdf")} g(r)</h2>
-              </div>
-              <div className="chips">
-                {st.prdf.map((p) => {
-                  const on = shownPairs.includes(p.pair);
-                  return (
-                    <button
-                      key={p.pair}
-                      className={`elchip ${on ? "is-on" : ""}`}
-                      aria-pressed={on}
-                      onClick={() => setPairs(on ? shownPairs.filter((x) => x !== p.pair) : [...shownPairs, p.pair].slice(-8))}
-                    >
-                      {p.pair}
-                    </button>
-                  );
-                })}
-              </div>
-              <LineChart
-                series={shownPairs.map((pair, i) => ({ id: pair, label: pair, color: seriesColor(i), points: st.prdf.find((p) => p.pair === pair)!.points }))}
-                xLabel="r (Å)"
-                yLabel="g(r)"
-                xDomain={[0, 8]}
-                xFmt={(x) => x.toFixed(2) + " Å"}
-                yFmt={(y) => y.toFixed(2)}
-              />
-            </section>
-          )}
-
-          {st && (
-            <section className="card">
-              <div className="card-head">
                 <h2>{t("feat.sharing")}</h2>
                 <span className="muted small">{t("feat.sharingHint")}</span>
               </div>
@@ -475,26 +431,6 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
               </div>
             </section>
           )}
-
-          <section className="card">
-            <div className="card-head">
-              <h2>{t("feat.xrd")}</h2>
-            </div>
-            <LineChart
-              series={[{ id: "x", label: t("feat.intensity"), color: seriesColor(6), points: entry.xrd.profile }]}
-              xLabel="2θ (°)"
-              yLabel={t("feat.relIntensity")}
-              height={200}
-              xDomain={[5, 90]}
-              yDomain={[0, 115]}
-              annotations={[...entry.xrd.peaks]
-                .sort((a, b) => b.intensity - a.intensity)
-                .slice(0, 6)
-                .map((p) => ({ x: p.twoTheta, y: p.intensity, text: p.hkl.join("") }))}
-              xFmt={(x) => x.toFixed(2) + "°"}
-              yFmt={(y) => y.toFixed(1)}
-            />
-          </section>
 
           <section className="card">
             <div className="card-head">
