@@ -274,6 +274,10 @@ export default function SitePanel(p: Props) {
             </dd>
           </div>
           <div>
+            <dt>{t("site.bvvs")} |V|</dt>
+            <dd className="mono">{a.bvvsHost === null ? "—" : `${a.bvvsHost.toFixed(3)} v.u.`}</dd>
+          </div>
+          <div>
             <dt>{t("site.baur")} Δ (Baur)</dt>
             <dd className="mono">{fmt(a.distortion, 4)}</dd>
           </div>
@@ -317,6 +321,7 @@ export default function SitePanel(p: Props) {
           </div>
         )}
         <p className="muted small">{t("site.offsetNote")}</p>
+        <p className="muted small">{t("site.bvvsNote")}</p>
         <p className="muted small">{t("site.cshmNote")}</p>
       </section>
     </div>

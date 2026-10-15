@@ -116,6 +116,8 @@ export interface SiteAnalysis {
   rSite: number | null; // mean(d_i − r_X,i): radius of the cavity
   rHost: RadiusResult | null;
   bvsHost: number | null;
+  /** Bond valence vector sum |Σ s_i r̂_i| of the host (v.u.): 0 when the bond valences balance in every direction. */
+  bvvsHost: number | null;
   kind: RadiusKind;
 }
 
@@ -233,6 +235,7 @@ export function analyzeSite(cr: Crystal, ox: Record<string, number>, bonds: Bond
     rSite = ligands.reduce((s, l) => s + (l.nb.d - (l.r as number)), 0) / cn;
   }
   const bvsHost = bondValenceSum(host.el, ligands);
+  const bvvsHost = bondValenceVectorSum(host.el, ligands);
 
   return {
     pos,
@@ -254,6 +257,7 @@ export function analyzeSite(cr: Crystal, ox: Record<string, number>, bonds: Bond
     rSite,
     rHost,
     bvsHost,
+    bvvsHost,
     kind: opts.kind,
   };
 }
@@ -271,6 +275,22 @@ export function bondValenceSum(el: string, ligands: LigandInfo[]): number | null
     }
   }
   return v;
+}
+
+/** Length of the bond valence vector sum Σ s_i r̂_i, with the same occupancy weights as bondValenceSum. */
+export function bondValenceVectorSum(el: string, ligands: LigandInfo[]): number | null {
+  if (ligands.length === 0) return null;
+  const V: Vec3 = [0, 0, 0];
+  for (const l of ligands) {
+    const u = norm(l.nb.v) || 1;
+    for (const sp of l.species) {
+      const r0 = bvR0(el, sp.el);
+      if (r0 === null) return null;
+      const s = Math.min(1, sp.occ) * Math.exp((r0 - l.nb.d) / BV_B);
+      for (let k = 0; k < 3; k++) V[k] += (s * l.nb.v[k]) / u;
+    }
+  }
+  return norm(V);
 }
 
 // ---------------------------------------------------------------------------
