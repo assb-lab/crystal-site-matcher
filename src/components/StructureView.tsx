@@ -61,10 +61,11 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
     }
     if (view.showHops && hops?.length) x.hops = hops;
     if (selClass && hops) x.selHops = selClass.members.map((i) => hops[i]);
+    if (view.showMinima && entry?.minima) x.minima = entry.minima;
     if (view.showIso && entry?.grid?.energy && doc.mobile)
       x.iso = { field: entry.grid.energy, n: entry.grid.n, level: view.isoLevel ?? autoIsoLevel(entry), color: ISO_COLOR };
     return x;
-  }, [view.showHops, view.showIso, view.isoLevel, entry, doc.mobile, hops, selClass]);
+  }, [view.showHops, view.showIso, view.showMinima, view.isoLevel, entry, doc.mobile, hops, selClass]);
 
   const scene = useMemo(() => buildScene(crystal, bonds, view, validSel ? doc.selectedKey : null, extras), [crystal, bonds, view, doc.selectedKey, validSel, extras]);
 
@@ -159,7 +160,7 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
         <div className="stage-body">
           <Viewer spec={scene} structureId={`${doc.id}|${doc.blockIdx}|${view.supercell.join("x")}`} viewCmd={viewCmd} onPick={onPick} describe={describe} />
           <ViewControls view={view} setView={setView} onViewDir={(dir) => setViewCmd((c) => ({ dir, n: (c?.n ?? 0) + 1 }))} crystal={crystal} ox={ox} bonds={bonds} />
-          {(view.showIso || view.showHops || selClass) && (
+          {(view.showIso || view.showHops || view.showMinima || selClass) && (
             <div className="overlay-chips">
               {view.showIso && (
                 <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showIso: false }))} title={t("stage.hideIso")}>
@@ -169,6 +170,11 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
               {view.showHops && (
                 <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showHops: false }))} title={t("stage.hideHops")}>
                   {t("stage.hops")} ✕
+                </button>
+              )}
+              {view.showMinima && (
+                <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showMinima: false }))} title={t("stage.hideMinima")} id="hide-minima">
+                  {t("stage.minima")} ✕
                 </button>
               )}
               {selClass && (

@@ -21,6 +21,7 @@ export interface ViewOptions {
   polyElements: string[]; // centre elements whose polyhedra are drawn in "elements" mode
   showHops: boolean; // migration hops between mobile-ion sites
   showIso: boolean; // BVSE isosurface of the mobile ion
+  showMinima: boolean; // stable sites (BVSE minima) of the mobile ion
   isoLevel: number | null; // ΔE (eV) above the minimum; null = automatic
 }
 
@@ -38,6 +39,7 @@ export const DEFAULT_VIEW: ViewOptions = {
   polyElements: [],
   showHops: false,
   showIso: false,
+  showMinima: false,
   isoLevel: null,
 };
 
@@ -85,6 +87,8 @@ export interface SceneSpec {
   polyOpacity: number;
   hopLines: { a: Vec3; b: Vec3; color: [number, number, number] }[];
   hopPath: HopPathSpec | null;
+  /** BVSE minima: at CIF mobile-ion sites, or empty candidate sites */
+  minima: { xyz: Vec3; occupied: boolean }[];
   iso: IsoSpec | null;
 }
 
@@ -117,6 +121,7 @@ export interface SceneExtras {
   /** Highlighted hops (one class); `hopRange` is the bottleneck range used for the colour scale. */
   selHops?: SceneHop[];
   hopRange?: [number, number];
+  minima?: { frac: Vec3; occupied: boolean }[];
   iso?: { field: Float32Array; n: Vec3; level: number; color: [number, number, number] } | null;
 }
 
@@ -126,6 +131,11 @@ const RAMP: [number, number, number][] = [
   [237, 161, 0],
   [27, 175, 122],
 ];
+/** Marker colour of an empty candidate site (BVSE minimum away from the CIF sites): a cyan no element uses. */
+export const MINIMUM_COLOR: [number, number, number] = [0, 172, 230];
+/** Marker colour of a BVSE minimum at a CIF site: a mid grey that reads on light and dark backgrounds. */
+export const MINIMUM_SITE_COLOR: [number, number, number] = [128, 136, 150];
+
 /** Colour of a hop with bottleneck radius `rb` on the scale [lo, hi] (the same in the 3D view and the charts). */
 export function hopColor(rb: number, lo: number, hi: number): [number, number, number] {
   return ramp(hi > lo ? (rb - lo) / (hi - lo) : 1);
@@ -332,6 +342,17 @@ export function buildScene(
       }
   }
 
+  // 7) stable sites of the mobile ion, with boundary images like the atoms
+  const minima: SceneSpec["minima"] = [];
+  for (const m of extras.minima ?? [])
+    for (let i = -1; i <= na; i++)
+      for (let j = -1; j <= nb; j++)
+        for (let k = -1; k <= nc; k++) {
+          const f: Vec3 = [m.frac[0] + i, m.frac[1] + j, m.frac[2] + k];
+          if (f[0] < -tol || f[0] > na + tol || f[1] < -tol || f[1] > nb + tol || f[2] < -tol || f[2] > nc + tol) continue;
+          minima.push({ xyz: toCart(L, f), occupied: m.occupied });
+        }
+
   const center = toCart(L, [na / 2, nb / 2, nc / 2]);
   let extent = 0;
   for (const a of atoms.values()) {
@@ -353,6 +374,7 @@ export function buildScene(
     polyOpacity: opts.polyOpacity,
     hopLines,
     hopPath,
+    minima,
     iso: extras.iso ? { ...extras.iso, axes: [L.A, L.B, L.C], supercell: opts.supercell } : null,
   };
 }
