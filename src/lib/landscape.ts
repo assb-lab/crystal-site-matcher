@@ -5,7 +5,7 @@
 // not a force constant; both need checking (e.g. by structure relaxation).
 
 import type { FrameworkField, GridResult } from "./bvse";
-import { Crystal, Vec3, norm, toCart } from "./structure";
+import { Crystal, Vec3, norm, pbcDist as latticePbcDist, toCart } from "./structure";
 
 /** Search window above the grid minimum (eV); minima at CIF sites are kept up to this energy. */
 export const MINIMA_SEARCH_E = 2.0;
@@ -110,15 +110,8 @@ export function localQuadratic(field: FrameworkField, p: Vec3, h = FD) {
   return { e0, g, H };
 }
 
-/** Shortest Cartesian distance between two fractional points under periodic boundaries. */
-export function pbcDist(cr: Crystal, f1: Vec3, f2: Vec3): number {
-  const d = [0, 1, 2].map((k) => f1[k] - f2[k] - Math.round(f1[k] - f2[k]));
-  let best = Infinity;
-  for (let i = -1; i <= 1; i++)
-    for (let j = -1; j <= 1; j++)
-      for (let k = -1; k <= 1; k++) best = Math.min(best, norm(toCart(cr.lattice, [d[0] + i, d[1] + j, d[2] + k])));
-  return best;
-}
+/** Shortest periodic distance between two fractional points (see structure.ts). */
+const pbcDist = (cr: Crystal, f1: Vec3, f2: Vec3) => latticePbcDist(cr.lattice, f1, f2);
 
 const wrap = (x: number) => {
   const w = x - Math.floor(x);

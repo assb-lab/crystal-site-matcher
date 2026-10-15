@@ -167,3 +167,5 @@ MIT License © 2026 assb-lab（[LICENSE](LICENSE)）。同梱データの出典�
 - サンプル構造: LiFePO₄ (Streltsov et al. 1993)、Y₃Al₅O₁₂ (Euler & Bruce 1965)、LiCoO₂ (Akimoto et al. 1998)、TiO₂ ルチル (Burdett et al. 1987)、Li₃N (Rabenau & Schulz 1976)、Li₁₀GeP₂S₁₂ (Kuhn, Köhler & Lotsch 2013)、Li₆PS₅Cl (Dewald et al. 2019)、α-AgI（Ag を 12d に統計分布）、MgAl₂O₄、SrTiO₃（文献値を丸めた代表値）
 
 CIF の格子角は、未記載・`?`・`.` のときのみ90°として扱い、不正な数値文字列はエラーにします。長さ・角度に加えて、生成した体積・逆行列などの有限性も確認し、浮動小数点のオーバーフローやアンダーフローがあるセルを計算前に拒否します。
+
+周期境界の最短距離は、格子ごとにキャッシュしたQR分解と最近平面法による初期候補を使い、残りの距離の下限で枝刈りする球探索で求めます。強く斜交したセルでも、逆格子による巨大な直方体範囲の全走査は行いません。

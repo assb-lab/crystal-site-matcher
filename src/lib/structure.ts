@@ -145,17 +145,78 @@ const wrap = (x: number) => {
   return w > 1 - 1e-7 ? 0 : w;
 };
 
-/** Shortest Cartesian distance between two fractional points under PBC. */
-function pbcDist(L: Lattice, f1: Vec3, f2: Vec3): number {
-  const d: Vec3 = [f1[0] - f2[0], f1[1] - f2[1], f1[2] - f2[2]];
-  let best = Infinity;
-  for (let i = -1; i <= 1; i++)
-    for (let j = -1; j <= 1; j++)
-      for (let k = -1; k <= 1; k++) {
-        const r = norm(toCart(L, [d[0] - Math.round(d[0]) + i, d[1] - Math.round(d[1]) + j, d[2] - Math.round(d[2]) + k]));
-        if (r < best) best = r;
+// Cache the QR factors of a short-vector-first basis for each immutable lattice.
+const distanceBases = new WeakMap<Lattice, { q: Vec3[]; r: number[][]; scale: number }>();
+function distanceBasis(L: Lattice) {
+  let basis = distanceBases.get(L);
+  if (basis) return basis;
+  const unit = Math.max(L.a, L.b, L.c);
+  const vectors = [L.A, L.B, L.C].map((v) => v.map((x) => x / unit) as Vec3).sort((a, b) => norm(a) - norm(b));
+  const q: Vec3[] = [];
+  const r = [0, 1, 2].map(() => [0, 0, 0]);
+  for (let j = 0; j < 3; j++) {
+    let v: Vec3 = [...vectors[j]];
+    // Reorthogonalise to retain accuracy for strongly oblique bases.
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < j; i++) {
+      const projection = dot(q[i], v);
+      r[i][j] += projection;
+      v = v.map((x, k) => x - projection * q[i][k]) as Vec3;
+    }
+    r[j][j] = norm(v);
+    q.push(v.map((x) => x / r[j][j]) as Vec3);
+  }
+  basis = { q, r, scale: unit };
+  distanceBases.set(L, basis);
+  return basis;
+}
+
+/**
+ * Exact closest periodic image by a 3D sphere search in QR coordinates.
+ * A nearest-plane image seeds the radius; each level bounds the remaining squared distance,
+ * and the radius shrinks whenever a closer image is found. No fixed Cartesian box is scanned.
+ */
+export function pbcDist(L: Lattice, f1: Vec3, f2: Vec3): number {
+  const d = [0, 1, 2].map((k) => f1[k] - f2[k] - Math.round(f1[k] - f2[k])) as Vec3;
+  const { q, r, scale: unit } = distanceBasis(L);
+  const target = toCart(L, d).map((x) => x / unit) as Vec3;
+  if (norm(target) === 0) return 0;
+  const y = q.map((v) => dot(v, target));
+  const image = [0, 0, 0];
+  // Back substitution rounds in the metric, rather than rounding each fractional coordinate alone.
+  for (let k = 2; k >= 0; k--) {
+    let t = y[k];
+    for (let j = k + 1; j < 3; j++) t -= r[k][j] * image[j];
+    image[k] = Math.round(t / r[k][k]);
+  }
+  let best = y.reduce((sum, t, k) => {
+    for (let j = k; j < 3; j++) t -= r[k][j] * image[j];
+    return sum + t * t;
+  }, 0);
+  const search = (k: number, partial: number) => {
+    let t = y[k];
+    for (let j = k + 1; j < 3; j++) t -= r[k][j] * image[j];
+    const centre = t / r[k][k];
+    const nearest = Math.round(centre);
+    if (k === 0) {
+      const residual = t - r[0][0] * nearest;
+      best = Math.min(best, partial + residual * residual);
+      return;
+    }
+    // Nearest integers first, recomputing the radius after each improvement.
+    for (let offset = 0; ; offset++) {
+      const radius = Math.sqrt(Math.max(0, best - partial)) / r[k][k];
+      if (offset - Math.abs(nearest - centre) > radius + 1e-10) break;
+      for (const n of offset ? [nearest - offset, nearest + offset] : [nearest]) {
+        const residual = t - r[k][k] * n;
+        const next = partial + residual * residual;
+        if (next > best + Number.EPSILON * best * 8) continue;
+        image[k] = n;
+        search(k - 1, next);
       }
-  return best;
+    }
+  };
+  search(2, 0);
+  return Math.sqrt(best) * unit;
 }
 
 /** "Fe2+", "O2-", "Fe+3", "Ca1", "OW", "CA" → element (+ optional charge). */
