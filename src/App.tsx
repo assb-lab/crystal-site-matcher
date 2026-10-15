@@ -66,10 +66,10 @@ export default function App() {
   const compareDocs = docs.filter((d) => !excluded.has(d.id));
   const wantedIds = useMemo(() => {
     if (mode === "compare") return compareDocs.map((d) => d.id);
-    if (active && (tab === "feat" || active.view.showHops || active.view.showIso)) return [active.id];
+    if (active && (tab === "feat" || active.view.showHops || active.view.showIso || active.hopSel)) return [active.id];
     return [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, tab, active?.id, active?.view.showHops, active?.view.showIso, compareDocs.map((d) => d.id).join(",")]);
+  }, [mode, tab, active?.id, active?.view.showHops, active?.view.showIso, active?.hopSel, compareDocs.map((d) => d.id).join(",")]);
   const { entries, errors } = useFeatures(docs, wantedIds);
   const freshEntry = (d: Doc) => (entries[d.id] && entries[d.id].sig === featureSig(d) ? entries[d.id] : undefined);
 

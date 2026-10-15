@@ -11,6 +11,7 @@ import { analyzeSite } from "../lib/analysis";
 import { SceneExtras, ViewOptions, atomKey, buildScene, parseAtomKey } from "../lib/scene";
 import { ionLabel } from "../lib/format";
 import type { FeatureEntry } from "../lib/useFeatures";
+import { hopClasses } from "../lib/features";
 import { useT, type MsgKey } from "../i18n";
 
 export type Tab = "site" | "subst" | "feat" | "struct";
@@ -49,13 +50,21 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
     [validSel, crystal, ox, bonds, selPos, doc.radiusKind, doc.hostSite, doc.hostSpin],
   );
 
+  const hops = entry?.static.hops;
+  const selClass = useMemo(() => (hops && doc.hopSel ? (hopClasses(crystal, hops).find((c) => c.key === doc.hopSel) ?? null) : null), [crystal, hops, doc.hopSel]);
+
   const extras = useMemo<SceneExtras>(() => {
     const x: SceneExtras = {};
-    if (view.showHops && entry?.static.hops.length) x.hops = entry.static.hops;
+    if (hops?.length) {
+      const rbs = hops.map((h) => h.rb);
+      x.hopRange = [Math.min(...rbs), Math.max(...rbs)];
+    }
+    if (view.showHops && hops?.length) x.hops = hops;
+    if (selClass && hops) x.selHops = selClass.members.map((i) => hops[i]);
     if (view.showIso && entry?.grid?.energy && doc.mobile)
       x.iso = { field: entry.grid.energy, n: entry.grid.n, level: view.isoLevel ?? autoIsoLevel(entry), color: ISO_COLOR };
     return x;
-  }, [view.showHops, view.showIso, view.isoLevel, entry, doc.mobile]);
+  }, [view.showHops, view.showIso, view.isoLevel, entry, doc.mobile, hops, selClass]);
 
   const scene = useMemo(() => buildScene(crystal, bonds, view, validSel ? doc.selectedKey : null, extras), [crystal, bonds, view, doc.selectedKey, validSel, extras]);
 
@@ -150,7 +159,7 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
         <div className="stage-body">
           <Viewer spec={scene} structureId={`${doc.id}|${doc.blockIdx}|${view.supercell.join("x")}`} viewCmd={viewCmd} onPick={onPick} describe={describe} />
           <ViewControls view={view} setView={setView} onViewDir={(dir) => setViewCmd((c) => ({ dir, n: (c?.n ?? 0) + 1 }))} crystal={crystal} ox={ox} bonds={bonds} />
-          {(view.showIso || view.showHops) && (
+          {(view.showIso || view.showHops || selClass) && (
             <div className="overlay-chips">
               {view.showIso && (
                 <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showIso: false }))} title={t("stage.hideIso")}>
@@ -160,6 +169,11 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
               {view.showHops && (
                 <button className="chip is-on" onClick={() => setView((v) => ({ ...v, showHops: false }))} title={t("stage.hideHops")}>
                   {t("stage.hops")} ✕
+                </button>
+              )}
+              {selClass && (
+                <button className="chip is-on chip-path" onClick={() => update(() => ({ hopSel: null }))} title={t("stage.clearPath")} id="clear-hop-path">
+                  {t("stage.path", { from: selClass.from, to: selClass.to, d: selClass.d.toFixed(3), n: selClass.members.length })} ✕
                 </button>
               )}
             </div>

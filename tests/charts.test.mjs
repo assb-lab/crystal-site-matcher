@@ -4,7 +4,7 @@ import test from 'node:test';
 
 for (const [mode, name] of [
   ['ticks', 'Chart axes terminate for symmetry-equivalent and ordinary values'],
-  ['lco', 'Actual LiCoO2 CIF renders the features panel and all nine hops'],
+  ['lco', 'Actual LiCoO2 CIF renders the features panel, all nine hops and the hop list'],
 ]) {
   test(name, () => {
     const result = spawnSync(process.execPath, ['tests/chart-fixture.mjs', mode], {

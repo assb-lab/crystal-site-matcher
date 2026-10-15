@@ -84,7 +84,15 @@ export interface SceneSpec {
   bondRadius: number;
   polyOpacity: number;
   hopLines: { a: Vec3; b: Vec3; color: [number, number, number] }[];
+  hopPath: HopPathSpec | null;
   iso: IsoSpec | null;
+}
+
+/** The selected class of hops, drawn as a moving dashed line between its two mobile-ion sites. */
+export interface HopPathSpec {
+  segs: [Vec3, Vec3][];
+  necks: Vec3[]; // bottleneck points
+  color: [number, number, number]; // bottleneck colour of the class
 }
 
 export interface IsoSpec {
@@ -96,8 +104,19 @@ export interface IsoSpec {
   supercell: Vec3;
 }
 
+export interface SceneHop {
+  a: number;
+  b: number;
+  t: Vec3;
+  rb: number;
+  mid: Vec3; // Cartesian bottleneck point of the hop that starts in the home cell
+}
+
 export interface SceneExtras {
-  hops?: { a: number; b: number; t: Vec3; rb: number }[];
+  hops?: SceneHop[];
+  /** Highlighted hops (one class); `hopRange` is the bottleneck range used for the colour scale. */
+  selHops?: SceneHop[];
+  hopRange?: [number, number];
   iso?: { field: Float32Array; n: Vec3; level: number; color: [number, number, number] } | null;
 }
 
@@ -107,6 +126,11 @@ const RAMP: [number, number, number][] = [
   [237, 161, 0],
   [27, 175, 122],
 ];
+/** Colour of a hop with bottleneck radius `rb` on the scale [lo, hi] (the same in the 3D view and the charts). */
+export function hopColor(rb: number, lo: number, hi: number): [number, number, number] {
+  return ramp(hi > lo ? (rb - lo) / (hi - lo) : 1);
+}
+
 function ramp(t: number): [number, number, number] {
   const x = Math.max(0, Math.min(1, t)) * (RAMP.length - 1);
   const i = Math.min(RAMP.length - 2, Math.floor(x));
@@ -189,6 +213,16 @@ export function buildScene(
     const { pos, t } = parseAtomKey(selected);
     if (pos < cr.positions.length) addAtom(pos, t, true);
   }
+  // the selected hop path needs both of its end sites, even outside the displayed cells
+  const cells: Vec3[] = [];
+  for (let i = 0; i < na; i++) for (let j = 0; j < nb; j++) for (let k = 0; k < nc; k++) cells.push([i, j, k]);
+  const selHops = extras.selHops ?? [];
+  for (const h of selHops)
+    for (const c of cells) {
+      if (!hidden.has(mainEl(h.a))) addAtom(h.a, c, true);
+      if (!hidden.has(mainEl(h.b))) addAtom(h.b, add(h.t, c), true);
+    }
+
   const selPos = selected ? parseAtomKey(selected).pos : -1;
   const selGroup = selPos >= 0 && selPos < cr.positions.length ? cr.positions[selPos].group : null;
 
@@ -268,12 +302,11 @@ export function buildScene(
 
   // 6) migration hops between mobile sites, replicated over the displayed cells
   const hopLines: SceneSpec["hopLines"] = [];
+  const rbAll = [...(extras.hops ?? []), ...selHops].map((h) => h.rb);
+  const [lo, hi] = extras.hopRange ?? [Math.min(...rbAll), Math.max(...rbAll)];
   if (extras.hops && extras.hops.length) {
-    const rbs = extras.hops.map((h) => h.rb);
-    const lo = Math.min(...rbs),
-      hi = Math.max(...rbs);
     for (const h of extras.hops) {
-      const col = ramp(hi > lo ? (h.rb - lo) / (hi - lo) : 1);
+      const col = hopColor(h.rb, lo, hi);
       const fa = cr.positions[h.a].frac,
         fb = cr.positions[h.b].frac;
       for (let i = 0; i < na; i++)
@@ -284,6 +317,19 @@ export function buildScene(
             hopLines.push({ a, b, color: col });
           }
     }
+  }
+
+  let hopPath: HopPathSpec | null = null;
+  if (selHops.length) {
+    hopPath = { segs: [], necks: [], color: hopColor(selHops[0].rb, lo, hi) };
+    for (const h of selHops)
+      for (const c of cells) {
+        const fa = cr.positions[h.a].frac,
+          fb = cr.positions[h.b].frac;
+        const shift = toCart(L, c);
+        hopPath.segs.push([toCart(L, add(fa, c)), toCart(L, add(add(fb, h.t), c))]);
+        hopPath.necks.push(add(h.mid, shift));
+      }
   }
 
   const center = toCart(L, [na / 2, nb / 2, nc / 2]);
@@ -306,6 +352,7 @@ export function buildScene(
     bondRadius: opts.bondRadius,
     polyOpacity: opts.polyOpacity,
     hopLines,
+    hopPath,
     iso: extras.iso ? { ...extras.iso, axes: [L.A, L.B, L.C], supercell: opts.supercell } : null,
   };
 }

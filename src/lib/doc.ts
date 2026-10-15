@@ -28,6 +28,8 @@ export interface Doc {
   cutScope: "pair" | "site";
   mobile: string | null;
   hopCutoff: number;
+  /** Highlighted hop class (HopClass.key) on the features tab; drawn as a dashed path in 3D. */
+  hopSel: string | null;
   gridRes: number;
   colorSlot: number;
   thumb: string | null;
@@ -71,6 +73,7 @@ export function createDoc(blocks: CifBlock[], fileName: string, blockIdx: number
     cutScope: "pair",
     mobile,
     hopCutoff: DEFAULT_HOP_CUTOFF,
+    hopSel: null,
     gridRes: DEFAULT_GRID_RES,
     colorSlot,
     thumb: null,

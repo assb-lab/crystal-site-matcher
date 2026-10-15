@@ -1618,6 +1618,28 @@ tr.is-host td {
   }
 }
 
+.pt-button {
+  cursor: pointer;
+}
+.pt-button:focus {
+  outline: none;
+}
+.pt-button:focus-visible circle:last-of-type {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.pt-selected {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 3 2.5;
+}
+.chip-path {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .hop-legend {
   display: inline-flex;
   align-items: center;

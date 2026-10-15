@@ -138,6 +138,29 @@ export interface Hop {
   mid: Vec3; // Cartesian point of the bottleneck
 }
 
+/** Hops that look the same: same pair of site groups, distance and bottleneck radius (symmetry-equivalent in practice). */
+export interface HopClass {
+  key: string;
+  from: string; // site group (the smaller key of the two ends)
+  to: string;
+  d: number;
+  rb: number;
+  members: number[]; // indices into the hop list
+}
+
+/** Groups hops into classes, ordered by bottleneck radius (narrow first), then distance. */
+export function hopClasses(cr: Crystal, hops: Hop[]): HopClass[] {
+  const out = new Map<string, HopClass>();
+  hops.forEach((h, i) => {
+    const [from, to] = [cr.positions[h.a].group, cr.positions[h.b].group].sort();
+    const key = `${from}|${to}|${h.d.toFixed(3)}|${h.rb.toFixed(3)}`;
+    const c = out.get(key);
+    if (c) c.members.push(i);
+    else out.set(key, { key, from, to, d: h.d, rb: h.rb, members: [i] });
+  });
+  return [...out.values()].sort((x, y) => x.rb - y.rb || x.d - y.d || (x.key < y.key ? -1 : 1));
+}
+
 export interface SiteRow {
   group: string;
   el: string;
