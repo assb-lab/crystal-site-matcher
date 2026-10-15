@@ -62,6 +62,19 @@ try {
     assert.match(en, /Mobile-ion hops \(9\)/);
     assert.match(en, /Bottleneck radius \(Å\) vs Hop distance \(Å\)/);
     assert.doesNotMatch(en, /[\u3040-\u30ff\u4e00-\u9fff]/, 'untranslated Japanese text in the English features panel');
+    // equivalent hops share one clickable point and one row of the hop list (#21)
+    const { hopClasses } = await server.ssrLoadModule('/src/lib/features.ts');
+    const [cls] = hopClasses(doc.crystal, st.hops);
+    assert.equal((html.match(/role="button"/g) ?? []).length, 1);
+    assert.match(html, /aria-pressed="false"/);
+    assert.match(html, /<td[^>]*><span class="dot"[^>]*><\/span>Li1 → Li1<\/td><td class="num mono">2\.816<\/td><td class="num mono">0\.148<\/td><td class="num mono">9<\/td>/);
+    const picked = renderToStaticMarkup(createElement(I18nProvider, { initial: 'ja' }, createElement(FeaturesPanel, { ...props, doc: { ...doc, hopSel: cls.key } })));
+    assert.match(picked, /aria-pressed="true"/);
+    assert.match(picked, /class="clickable is-selected"/);
+    assert.match(picked, /class="pt-selected"/);
+    // a stale selection (e.g. after changing the hop cutoff) is ignored
+    const stale = renderToStaticMarkup(createElement(I18nProvider, { initial: 'ja' }, createElement(FeaturesPanel, { ...props, doc: { ...doc, hopSel: 'Li9|Li9|1.000|0.000' } })));
+    assert.doesNotMatch(stale, /is-selected|pt-selected/);
   }
 } finally {
   await server.close();

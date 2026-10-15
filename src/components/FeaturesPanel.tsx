@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import type { Doc } from "../lib/doc";
 import type { FeatureEntry } from "../lib/useFeatures";
-import { FEATURE_DEFS, FEATURE_BY_KEY, GROUPS } from "../lib/features";
+import { FEATURE_DEFS, FEATURE_BY_KEY, GROUPS, hopClasses } from "../lib/features";
+import { hopColor } from "../lib/scene";
 import { bvseSupported } from "../lib/bvse";
 import { shannonRadius } from "../lib/analysis";
-import { fmt, ionLabel } from "../lib/format";
+import { fmt, ionLabel, rgbCss } from "../lib/format";
 import { LineChart, ScatterChart, StackedBars, seriesColor } from "./charts";
 import { useI18n, type TFn } from "../i18n";
 import { featDesc, featLabel, fmtFeature, groupLabel, shapeName } from "../i18n/domain";
@@ -54,6 +55,12 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
   const rM = doc.mobile ? shannonRadius(doc.mobile, Math.round(mobileQ), 6, { kind: "ionic" }) : null;
   const isoLevel = doc.view.isoLevel ?? autoIsoLevel(entry);
   const setView = (patch: Partial<Doc["view"]>) => update((d) => ({ view: { ...d.view, ...patch } }));
+  const classes = useMemo(() => (st ? hopClasses(cr, st.hops) : []), [cr, st]);
+  const rbLo = Math.min(...classes.map((c) => c.rb)),
+    rbHi = Math.max(...classes.map((c) => c.rb));
+  const hopCss = (rb: number) => rgbCss(hopColor(rb, rbLo, rbHi));
+  const hopSel = classes.some((c) => c.key === doc.hopSel) ? doc.hopSel : null;
+  const pickHop = (key: string) => update((d) => ({ hopSel: d.hopSel === key ? null : key }));
 
   const copyTsv = () => {
     const lines = FEATURE_DEFS.map((d) => `${groupLabel(t, d.group)}\t${featLabel(t, d.key)}\t${fmtFeature(t, d, v[d.key])}\t${d.unit ?? ""}`);
@@ -198,12 +205,13 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                   </span>
                 </div>
                 <ScatterChart
-                  points={st.hops.map((h, i) => ({
-                    id: String(i),
-                    x: h.d,
-                    y: h.rb,
-                    label: `${cr.positions[h.a].group}→${cr.positions[h.b].group}`,
-                    color: seriesColor(0),
+                  points={classes.map((c) => ({
+                    id: c.key,
+                    x: c.d,
+                    y: c.rb,
+                    label: `${c.from}→${c.to}`,
+                    color: hopCss(c.rb),
+                    detail: t("feat.hopCount", { n: c.members.length }),
                   }))}
                   labels={false}
                   xLabel={`${t("feat.hopDist")} (Å)`}
@@ -211,8 +219,50 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                   height={220}
                   xFmt={(x) => x.toFixed(3) + " Å"}
                   yFmt={(y) => y.toFixed(3) + " Å"}
-                  r={4}
+                  r={5}
+                  selected={hopSel}
+                  onSelect={pickHop}
                 />
+                <p className="muted small">{t("feat.hopPickHint")}</p>
+                <div className="table-wrap">
+                  <table className="data compact" id="hop-classes">
+                    <thead>
+                      <tr>
+                        <th>{t("feat.hopPath")}</th>
+                        <th className="num">d (Å)</th>
+                        <th className="num">
+                          r<sub>b</sub> (Å)
+                        </th>
+                        <th className="num">{t("feat.hopN")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {classes.map((c) => (
+                        <tr
+                          key={c.key}
+                          className={`clickable ${hopSel === c.key ? "is-selected" : ""}`}
+                          tabIndex={0}
+                          aria-selected={hopSel === c.key}
+                          onClick={() => pickHop(c.key)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              pickHop(c.key);
+                            }
+                          }}
+                        >
+                          <td>
+                            <span className="dot" style={{ background: hopCss(c.rb) }} />
+                            {c.from} → {c.to}
+                          </td>
+                          <td className="num mono">{c.d.toFixed(3)}</td>
+                          <td className="num mono">{c.rb.toFixed(3)}</td>
+                          <td className="num mono">{c.members.length}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 <p className="muted small">{t("feat.bottleneckNote")}</p>
               </>
             )}

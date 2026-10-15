@@ -3,6 +3,9 @@ import * as THREE from "three";
 import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import type { SceneSpec } from "../lib/scene";
 import type { Vec3 } from "../lib/structure";
 
@@ -29,6 +32,7 @@ interface Ctx {
   gizmoArrows: THREE.Group;
   cellMat: THREE.LineBasicMaterial;
   haloMat: THREE.MeshBasicMaterial;
+  pathMats: LineMaterial[]; // dashed hop path: animated, sized to the canvas, recoloured with the theme
   labels: { el: HTMLDivElement; pos: THREE.Vector3 }[];
   axisLabels: { el: HTMLSpanElement; dir: THREE.Vector3 }[];
   extent: number;
@@ -38,6 +42,8 @@ interface Ctx {
 
 const FOV = 24;
 const GIZMO = 92;
+/** Speed of the dashes along a highlighted hop path (Å/s). */
+const DASH_SPEED = 0.9;
 
 function srgb(c: [number, number, number], k = 1) {
   return new THREE.Color().setRGB((c[0] / 255) * k, (c[1] / 255) * k, (c[2] / 255) * k, THREE.SRGBColorSpace);
@@ -119,6 +125,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
       gizmoArrows,
       cellMat,
       haloMat,
+      pathMats: [],
       labels: [],
       axisLabels: [],
       extent: 10,
@@ -131,6 +138,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
       renderer.setClearColor(new THREE.Color(cssVar("--viewer-bg", "#f7f8fa")), 1);
       cellMat.color = new THREE.Color(cssVar("--cell-line", "#3a4150"));
       haloMat.color = new THREE.Color(cssVar("--select", "#ffb000"));
+      for (const m of ctx.pathMats) m.color = new THREE.Color(cssVar("--ink", "#1a1f2b"));
     };
     applyTheme();
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -148,14 +156,20 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       controls.handleResize();
+      for (const m of ctx.pathMats) m.resolution.set(w, h);
     };
     const ro = new ResizeObserver(resize);
     ro.observe(host);
     resize();
 
     const v = new THREE.Vector3();
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let last = performance.now();
     const tick = () => {
       ctx.raf = requestAnimationFrame(tick);
+      const now = performance.now();
+      if (!still.matches) for (const m of ctx.pathMats) m.dashOffset -= (DASH_SPEED * (now - last)) / 1000;
+      last = now;
       controls.update();
       const w = host.clientWidth,
         h = host.clientHeight;
@@ -269,6 +283,9 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
     const built = populateContent(content, spec, { halo: ctx.haloMat, cell: ctx.cellMat });
     ctx.atomMesh = built.atomMesh;
     ctx.atomKeys = built.atomKeys;
+    ctx.pathMats = built.pathMats;
+    const host = hostRef.current!;
+    for (const m of ctx.pathMats) m.resolution.set(host.clientWidth, host.clientHeight);
 
     // labels
     const overlay = overlayRef.current!;
@@ -328,7 +345,7 @@ export function populateContent(
   content: THREE.Group,
   spec: SceneSpec,
   colors: { halo: THREE.MeshBasicMaterial; cell: THREE.LineBasicMaterial },
-): { atomMesh: THREE.InstancedMesh; atomKeys: string[] } {
+): { atomMesh: THREE.InstancedMesh; atomKeys: string[]; pathMats: LineMaterial[] } {
   // atoms
   const sphere = new THREE.SphereGeometry(1, 28, 18);
   const atomMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.05 });
@@ -459,10 +476,40 @@ export function populateContent(
     content.add(lines);
   }
 
+  // selected hop path: a wide band in the bottleneck colour with moving dashes on top, drawn over everything
+  const pathMats: LineMaterial[] = [];
+  if (spec.hopPath) {
+    const hp = spec.hopPath;
+    const pts: number[] = [];
+    for (const [a, b] of hp.segs) pts.push(...a, ...b);
+    const band = new LineMaterial({ color: srgb(hp.color), linewidth: 7, transparent: true, opacity: 0.55, depthTest: false });
+    const dash = new LineMaterial({ color: new THREE.Color(cssVar("--ink", "#1a1f2b")), linewidth: 3, dashed: true, dashSize: 0.28, gapSize: 0.2, depthTest: false });
+    for (const [mat, order] of [
+      [band, 6],
+      [dash, 7],
+    ] as const) {
+      const g = new LineSegmentsGeometry().setPositions(pts);
+      const line = new LineSegments2(g, mat);
+      line.computeLineDistances();
+      line.renderOrder = order;
+      content.add(line);
+    }
+    pathMats.push(band, dash);
+    const neck = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: srgb(hp.color), depthTest: false }), hp.necks.length);
+    hp.necks.forEach((n, i) => {
+      m4.compose(new THREE.Vector3(...n), q, new THREE.Vector3(0.11, 0.11, 0.11));
+      neck.setMatrixAt(i, m4);
+    });
+    neck.instanceMatrix.needsUpdate = true;
+    neck.computeBoundingSphere();
+    neck.renderOrder = 8;
+    content.add(neck);
+  }
+
   // BVSE isosurface
   if (spec.iso) addIsosurface(content, spec.iso);
 
-  return { atomMesh: mesh, atomKeys: spec.atoms.map((a) => a.key) };
+  return { atomMesh: mesh, atomKeys: spec.atoms.map((a) => a.key), pathMats };
 }
 
 function addIsosurface(content: THREE.Group, iso: NonNullable<SceneSpec["iso"]>) {

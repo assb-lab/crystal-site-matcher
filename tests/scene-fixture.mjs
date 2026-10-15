@@ -33,6 +33,64 @@ try {
     const { doc, bonds } = await open('Li3N');
     assert.deepEqual(sc.defaultPolyElements(doc.crystal, doc.ox, bonds), ['Li']);
   }
+
+  // hop classes and the highlighted hop path (#21)
+  {
+    const { computeStaticFeatures, hopClasses } = await server.ssrLoadModule('/src/lib/features.ts');
+    const hopsOf = async (f) => {
+      const { doc, bonds } = await open(f);
+      const { table } = deriveBonds(doc.crystal, doc.ox, doc.bondSettings);
+      const st = computeStaticFeatures(doc.crystal, doc.ox, bonds, table, { mobileEl: doc.mobile, hopCutoff: doc.hopCutoff });
+      return { doc, bonds, hops: st.hops, classes: hopClasses(doc.crystal, st.hops) };
+    };
+    // LiCoO₂: the nine Li–Li hops are equivalent → one class
+    const lco = await hopsOf('LiCoO2');
+    assert.equal(lco.classes.length, 1);
+    assert.deepEqual([lco.classes[0].from, lco.classes[0].to, lco.classes[0].members.length], ['Li1', 'Li1', 9]);
+    // Li₃N: five classes, every hop in exactly one, ordered narrow → wide
+    const li3n = await hopsOf('Li3N');
+    assert.deepEqual(
+      li3n.classes.map((c) => `${c.from}-${c.to} ${c.d.toFixed(3)} ×${c.members.length}`),
+      ['Li1-Li2 2.862 ×12', 'Li2-Li2 3.648 ×6', 'Li2-Li2 2.106 ×3', 'Li1-Li1 3.648 ×3', 'Li2-Li2 3.875 ×2'],
+    );
+    assert.deepEqual(li3n.classes.flatMap((c) => c.members).sort((a, b) => a - b), li3n.hops.map((_, i) => i));
+    assert.ok(li3n.classes.every((c, i) => i === 0 || c.rb >= li3n.classes[i - 1].rb));
+    for (const c of li3n.classes) assert.ok(c.members.every((i) => Math.abs(li3n.hops[i].d - c.d) < 1e-3 && Math.abs(li3n.hops[i].rb - c.rb) < 1e-3));
+
+    // the path: one segment per member and displayed cell, ends on drawn mobile ions, bottleneck on the segment
+    const { doc, bonds, hops, classes } = li3n;
+    const cls = classes[3]; // Li1–Li1, 3.648 Å within the Li1 layer
+    const sel = cls.members.map((i) => hops[i]);
+    for (const supercell of [[1, 1, 1], [2, 1, 2]]) {
+      const view = { ...doc.view, supercell, showHops: false };
+      const spec = sc.buildScene(doc.crystal, bonds, view, null, { selHops: sel, hopRange: [0, 0.646] });
+      const nCells = supercell[0] * supercell[1] * supercell[2];
+      assert.equal(spec.hopPath.segs.length, sel.length * nCells);
+      assert.equal(spec.hopPath.necks.length, sel.length * nCells);
+      assert.equal(spec.hopLines.length, 0, 'other hops stay hidden');
+      const atXyz = (p) => spec.atoms.some((a) => Math.hypot(a.xyz[0] - p[0], a.xyz[1] - p[1], a.xyz[2] - p[2]) < 1e-6 && doc.crystal.sites[doc.crystal.positions[a.pos].main].element === 'Li');
+      for (const [a, b] of spec.hopPath.segs) {
+        assert.ok(atXyz(a) && atXyz(b), 'both ends are drawn Li atoms');
+        assert.ok(Math.abs(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) - cls.d) < 1e-6);
+      }
+      spec.hopPath.necks.forEach((n, i) => {
+        const [a, b] = spec.hopPath.segs[i];
+        const ab = [0, 1, 2].map((k) => b[k] - a[k]);
+        const an = [0, 1, 2].map((k) => n[k] - a[k]);
+        const tt = (an[0] * ab[0] + an[1] * ab[1] + an[2] * ab[2]) / (ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2);
+        const off = Math.hypot(...[0, 1, 2].map((k) => an[k] - tt * ab[k]));
+        assert.ok(tt >= -1e-9 && tt <= 1 + 1e-9 && off < 1e-6, 'bottleneck lies on its segment');
+      });
+      // colour follows the shared bottleneck scale (widest class → green end)
+      assert.deepEqual(spec.hopPath.color, sc.hopColor(cls.rb, 0, 0.646));
+    }
+    // nothing selected → no path
+    assert.equal(sc.buildScene(doc.crystal, bonds, doc.view, null, {}).hopPath, null);
+    // hidden mobile ions are not added back as path ends
+    const hidden = sc.buildScene(doc.crystal, bonds, { ...doc.view, hiddenElements: ['Li'] }, null, { selHops: sel });
+    assert.ok(!hidden.atoms.some((a) => doc.crystal.sites[doc.crystal.positions[a.pos].main].element === 'Li'));
+    assert.equal(hidden.hopPath.segs.length, sel.length);
+  }
 } finally {
   await server.close();
 }

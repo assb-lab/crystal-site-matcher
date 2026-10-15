@@ -298,6 +298,8 @@ export function ScatterChart({
   xFmt = (v: number) => v.toPrecision(4),
   yFmt = (v: number) => v.toPrecision(4),
   r = 5,
+  selected = null,
+  onSelect,
 }: {
   points: ScatterPoint[];
   xLabel: string;
@@ -307,6 +309,10 @@ export function ScatterChart({
   xFmt?: (v: number) => string;
   yFmt?: (v: number) => string;
   r?: number;
+  /** id of the highlighted point */
+  selected?: string | null;
+  /** makes the points buttons (click / Enter / Space) */
+  onSelect?: (id: string) => void;
 }) {
   const t = useT();
   const { W, wrap, attach } = useWidth();
@@ -362,6 +368,22 @@ export function ScatterChart({
         {pts.map((p) => (
           <g
             key={p.id}
+            className={onSelect ? "pt-button" : undefined}
+            role={onSelect ? "button" : undefined}
+            tabIndex={onSelect ? 0 : undefined}
+            aria-label={onSelect ? `${p.label}: ${xLabel} ${xFmt(p.x)}, ${yLabel} ${yFmt(p.y)}` : undefined}
+            aria-pressed={onSelect ? selected === p.id : undefined}
+            onClick={onSelect ? () => onSelect(p.id) : undefined}
+            onKeyDown={
+              onSelect
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelect(p.id);
+                    }
+                  }
+                : undefined
+            }
             onPointerEnter={(e) => {
               const wr = wrap.current!.getBoundingClientRect();
               setTip({
@@ -386,6 +408,7 @@ export function ScatterChart({
             onPointerLeave={() => setTip(null)}
           >
             <circle cx={X(p.x)} cy={Y(p.y)} r={r + 7} fill="transparent" />
+            {selected === p.id && <circle cx={X(p.x)} cy={Y(p.y)} r={r + 4.5} className="pt-selected" />}
             <circle cx={X(p.x)} cy={Y(p.y)} r={r} fill={p.color} stroke="var(--panel)" strokeWidth={2} />
             {labels && (
               <text x={X(p.x) + r + 4} y={Y(p.y) + 4} className="point-label">
