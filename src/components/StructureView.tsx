@@ -12,6 +12,7 @@ import { analyzeSite } from "../lib/analysis";
 import { SceneExtras, ViewOptions, atomKey, buildScene, parseAtomKey } from "../lib/scene";
 import { ionLabel } from "../lib/format";
 import type { FeatureEntry } from "../lib/useFeatures";
+import { atomSectors } from "../lib/scene";
 import { hopClasses } from "../lib/features";
 import { useT, type MsgKey } from "../i18n";
 
@@ -110,14 +111,16 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
 
   const describe = useCallback(
     (key: string) => {
-      const { pos, t } = parseAtomKey(key);
+      const { pos, t: translation } = parseAtomKey(key);
       const p = crystal.positions[pos];
       if (!p) return "";
       const ions = p.occupants.map((o) => ionLabel(crystal.sites[o.site].element, ox[crystal.sites[o.site].label])).join(" / ");
-      const f = p.frac.map((v, i) => (v + t[i]).toFixed(3)).join(", ");
-      return `${p.group}  ${ions}  (${f})  CN ${bonds.bonded[pos].length}`;
+      const f = p.frac.map((v, i) => (v + translation[i]).toFixed(3)).join(", ");
+      const sectors = atomSectors(crystal, pos);
+      const fractions = sectors.length > 1 ? "  " + sectors.map((s) => `${s.element ?? t("view.vacancy")} ${(s.fraction * 100).toFixed(1)}%`).join(" / ") : "";
+      return `${p.group}  ${ions}${fractions}  (${f})  CN ${bonds.bonded[pos].length}`;
     },
-    [crystal, ox, bonds],
+    [crystal, ox, bonds, t],
   );
 
   const onPick = useCallback(

@@ -678,6 +678,8 @@ export const ja = {
   "view.along": "{axis} 軸方向から見る",
   "view.alongRecip": "逆格子 {axis} 方向から見る",
   "view.atomSize": "原子サイズ",
+  "view.vacancy": "空孔",
+  "view.occupancyColors": "混合占有の球は占有率で色分けします。白い区画は空孔です。区画の向きは原子配列の方向を表しません。",
   "view.atoms": "原子と結合",
   "view.bondWidth": "結合の太さ",
   "view.bonds": "結合",

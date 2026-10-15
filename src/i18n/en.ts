@@ -680,6 +680,8 @@ export const en: Record<keyof typeof ja, string> = {
   "view.along": "View along {axis}",
   "view.alongRecip": "View along reciprocal {axis}",
   "view.atomSize": "Atom size",
+  "view.vacancy": "Vacancy",
+  "view.occupancyColors": "Mixed-site spheres are coloured by occupancy; white sectors represent vacancies. Sector orientation does not indicate atomic ordering.",
   "view.atoms": "Atoms & bonds",
   "view.bondWidth": "Bond width",
   "view.bonds": "Bonds",

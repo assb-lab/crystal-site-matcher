@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'vite';
-import { Color } from 'three';
+import { Color, SphereGeometry, MeshStandardMaterial, ShaderLib, Group, MeshBasicMaterial, LineBasicMaterial } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
 const server = await createServer({ server: { middlewareMode: true }, logLevel: 'silent' });
@@ -15,6 +15,82 @@ try {
   };
   const centres = (doc, spec) => spec.polys.map((p) => doc.crystal.sites[doc.crystal.positions[sc.parseAtomKey(p.centerKey).pos].main].element);
 
+  // Occupancy sectors: chemical alternatives and vacancy stay separate, without changing the CIF data.
+  {
+    const { applyOccupancyColors } = await server.ssrLoadModule('/src/components/occupancyMaterial.ts');
+    const { populateContent } = await server.ssrLoadModule('/src/components/Viewer.tsx');
+    const make = (rows) => docFromText(`data_mixed
+_cell_length_a 8
+_cell_length_b 8
+_cell_length_c 8
+_space_group_name_H-M_alt 'P 1'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+${rows.map(([label, el, occ]) => `${label} ${el} 0.5 0.5 0.5 ${occ}`).join('\n')}
+`, 'mixed.cif', 0);
+    const doc = make([['Li1', 'Li+', 0.1], ['Na1', 'Na+', 0.2], ['K1', 'K+', 0.3]]);
+    const before = JSON.stringify(doc.crystal);
+    const sectors = sc.atomSectors(doc.crystal, 0);
+    const fractions = Object.fromEntries(sectors.map((s) => [s.element ?? 'vacancy', s.fraction]));
+    for (const [el, f] of Object.entries({ Li: 0.1, Na: 0.2, K: 0.3, vacancy: 0.4 })) assert.ok(Math.abs(fractions[el] - f) < 1e-12);
+    assert.equal(JSON.stringify(doc.crystal), before);
+    assert.deepEqual(sectors.at(-1).color, [255, 255, 255]);
+    const duplicate = make([['Li1', 'Li+', 0.2], ['Li2', 'Li+', 0.3]]);
+    assert.deepEqual(sc.atomSectors(duplicate.crystal, 0).map((s) => [s.element, s.fraction]), [['Li', 0.5], [null, 0.5]]);
+    const full = make([['Li1', 'Li+', 1]]);
+    assert.equal(sc.atomSectors(full.crystal, 0).length, 1);
+    const over = make([['Li1', 'Li+', 0.8], ['Na1', 'Na+', 0.8]]);
+    assert.deepEqual(sc.atomSectors(over.crystal, 0).map((s) => s.fraction), [0.5, 0.5]);
+    assert.equal(over.crystal.positions[0].occupants.reduce((sum, o) => sum + o.occ, 0), 1.6);
+    const rounded = make([['Li1', 'Li+', 0.99999999]]);
+    assert.equal(sc.atomSectors(rounded.crystal, 0).length, 1);
+    assert.equal(sc.atomSectors(rounded.crystal, 0)[0].fraction, 1);
+    const { bonds } = deriveBonds(doc.crystal, doc.ox, doc.bondSettings);
+    const spec = sc.buildScene(doc.crystal, bonds, { ...doc.view, polyMode: 'none', supercell: [2, 1, 1] }, null);
+    assert.equal(spec.atoms.length, 2);
+    spec.atoms.forEach((a) => assert.deepEqual(a.sectors, sectors));
+    const geometry = new SphereGeometry(1, 12, 8), material = new MeshStandardMaterial();
+    const texture = applyOccupancyColors(geometry, material, spec.atoms);
+    assert.ok(texture);
+    const info = geometry.getAttribute('occupancyInfo');
+    assert.equal(info.getX(0), info.getX(1), 'periodic images reuse the palette');
+    assert.equal(info.getY(0), 4);
+    let end = 0;
+    sectors.forEach((s, i) => {
+      end += s.fraction;
+      assert.ok(Math.abs(texture.image.data[i * 4 + 3] - end) < 1e-7);
+      const color = new Color().setRGB(...s.color.map((c) => c / 255), 'srgb');
+      assert.ok(Math.abs(texture.image.data[i * 4] - color.r) < 1e-7);
+    });
+    const shader = { vertexShader: ShaderLib.standard.vertexShader, fragmentShader: ShaderLib.standard.fragmentShader, uniforms: {} };
+    material.onBeforeCompile(shader, null);
+    assert.match(shader.fragmentShader, /atan\(pie.x/);
+    assert.equal(shader.uniforms.occupancyPalette.value, texture);
+    let disposed = 0; texture.addEventListener('dispose', () => disposed++);
+    material.dispose();geometry.dispose();assert.equal(disposed, 1, 'palette lifetime follows material');
+    const pureGeometry = new SphereGeometry(), pureMaterial = new MeshStandardMaterial();
+    assert.equal(applyOccupancyColors(pureGeometry, pureMaterial, [{ ...spec.atoms[0], sectors: sc.atomSectors(full.crystal, 0) }]), null);
+    pureGeometry.dispose();pureMaterial.dispose();
+    const content = new Group();
+    const built = populateContent(content, spec, { halo: new MeshBasicMaterial(), cell: new LineBasicMaterial() });
+    assert.equal(built.atomMesh.count, spec.atoms.length);
+    assert.deepEqual(built.atomKeys, spec.atoms.map((a) => a.key));
+    assert.ok(built.atomMesh.geometry.getAttribute('occupancyInfo'));
+    content.traverse((o) => {o.geometry?.dispose();if (Array.isArray(o.material))o.material.forEach((m) => m.dispose());else o.material?.dispose();});
+    // Real LGPS Ge/P and argyrodite S/Cl mixing, and partially occupied Li sites.
+    for (const f of ['Li10GeP2S12', 'Li6PS5Cl']) {
+      const { doc, bonds } = await open(f);
+      const mixed = sc.buildScene(doc.crystal, bonds, doc.view, null);
+      assert.ok(mixed.atoms.some((a) => a.sectors.filter((s) => s.element !== null).length > 1));
+      assert.ok(mixed.atoms.some((a) => a.sectors.some((s) => s.element === null)));
+      for (const a of mixed.atoms) assert.ok(Math.abs(a.sectors.reduce((sum, s) => sum + s.fraction, 0) - 1) < 1e-6);
+    }
+  }
   // anion-centred polyhedra (#19)
   for (const [f, anion, cn] of [['LiCoO2', 'O', 6], ['Li3N', 'N', 8], ['SrTiO3', 'O', 6], ['LiFePO4', 'O', 4]]) {
     const { doc, bonds } = await open(f);

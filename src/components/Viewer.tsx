@@ -8,6 +8,7 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { MINIMUM_COLOR, MINIMUM_SITE_COLOR, SADDLE_COLOR, type SceneSpec } from "../lib/scene";
 import type { Vec3 } from "../lib/structure";
+import { applyOccupancyColors } from "./occupancyMaterial";
 
 export type ViewDir = "a" | "b" | "c" | "a*" | "b*" | "c*" | "reset";
 
@@ -354,6 +355,7 @@ export function populateContent(
   // atoms
   const sphere = new THREE.SphereGeometry(1, 28, 18);
   const atomMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.05 });
+  applyOccupancyColors(sphere, atomMat, spec.atoms);
   const mesh = new THREE.InstancedMesh(sphere, atomMat, Math.max(spec.atoms.length, 1));
   mesh.count = spec.atoms.length;
   const m4 = new THREE.Matrix4();

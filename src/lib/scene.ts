@@ -43,12 +43,36 @@ export const DEFAULT_VIEW: ViewOptions = {
   isoLevel: null,
 };
 
+export interface AtomSector {
+  element: string | null; // null = vacancy
+  fraction: number; // display fractions sum to 1; calculation occupancies are untouched
+  color: Vec3;
+}
+
+export const VACANCY_COLOR: Vec3 = [255, 255, 255];
+
+/** Aggregate chemical species at a position, retaining the unoccupied fraction. */
+export function atomSectors(cr: Crystal, pos: number): AtomSector[] {
+  const weights = new Map<string, number>();
+  for (const o of cr.positions[pos].occupants) {
+    if (!(o.occ > 0) || !Number.isFinite(o.occ)) continue;
+    const el = cr.sites[o.site].element;
+    weights.set(el, (weights.get(el) ?? 0) + o.occ);
+  }
+  const total = [...weights.values()].reduce((a, b) => a + b, 0);
+  const denominator = total > 1 || Math.abs(total - 1) < 1e-6 ? total : 1;
+  const sectors: AtomSector[] = [...weights].sort(([a], [b]) => a.localeCompare(b)).map(([element, w]) => ({ element, fraction: w / denominator, color: elementColor(element) }));
+  if (total < 1 - 1e-6) sectors.push({ element: null, fraction: 1 - total, color: VACANCY_COLOR });
+  return sectors;
+}
+
 export interface SceneAtom {
   key: string; // "pos|tx,ty,tz"
   pos: number;
   t: Vec3;
   xyz: Vec3;
   color: [number, number, number];
+  sectors: AtomSector[];
   radius: number;
   extra: boolean; // outside the displayed cell range (ligand of a polyhedron)
 }
@@ -205,7 +229,8 @@ export function buildScene(
     if (atoms.has(key)) return atoms.get(key)!;
     const p = cr.positions[pos];
     const f: Vec3 = [p.frac[0] + t[0], p.frac[1] + t[1], p.frac[2] + t[2]];
-    const a: SceneAtom = { key, pos, t, xyz: toCart(L, f), color: elementColor(mainEl(pos)), radius: radiusOf(pos), extra };
+    const sectors = atomSectors(cr, pos);
+    const a: SceneAtom = { key, pos, t, xyz: toCart(L, f), color: sectors.length === 1 ? sectors[0].color : elementColor(mainEl(pos)), sectors, radius: radiusOf(pos), extra };
     atoms.set(key, a);
     return a;
   };
