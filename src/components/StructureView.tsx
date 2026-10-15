@@ -149,7 +149,7 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
         </div>
         <div className="stage-body">
           <Viewer spec={scene} structureId={`${doc.id}|${doc.blockIdx}|${view.supercell.join("x")}`} viewCmd={viewCmd} onPick={onPick} describe={describe} />
-          <ViewControls view={view} setView={setView} onViewDir={(dir) => setViewCmd((c) => ({ dir, n: (c?.n ?? 0) + 1 }))} crystal={crystal} ox={ox} />
+          <ViewControls view={view} setView={setView} onViewDir={(dir) => setViewCmd((c) => ({ dir, n: (c?.n ?? 0) + 1 }))} crystal={crystal} ox={ox} bonds={bonds} />
           {(view.showIso || view.showHops) && (
             <div className="overlay-chips">
               {view.showIso && (
