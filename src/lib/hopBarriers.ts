@@ -189,24 +189,30 @@ function networkThresholds(ok: Barriered[]) {
   nodes.forEach((_, i) => uf.make(i));
   const dim: (number | null)[] = [null, null, null];
   const axis: (number | null)[] = [null, null, null];
-  const completes: (number | null)[] = [null, null, null]; // hop index that completed each dimension
-  for (const { h, b, i } of [...ok].sort((x, y) => x.b.Esad - y.b.Esad)) {
+  for (const { h, b } of [...ok].sort((x, y) => x.b.Esad - y.b.Esad)) {
     const before = uf.maxRank;
     uf.union(idx.get(h.a)!, idx.get(h.b)!, h.t);
     for (let d = before; d < uf.maxRank; d++) {
       dim[d] = b.Esad;
-      completes[d] = i;
     }
     for (let k = 0; k < 3; k++) if (uf.axes[k] && axis[k] === null) axis[k] = b.Esad;
   }
-  return { dim, axis, completes, rank: uf.maxRank };
+  return { dim, axis, rank: uf.maxRank };
 }
 
 /** Feature values from the per-hop barriers (grid group). */
-export function hopBarrierFeatureValues(cr: Crystal, hops: Hop[], barriers: (HopBarrier | null)[] | null): Record<string, number | null> {
-  const keys = ["hop_barrier_min", "hop_barrier_mean", "hop_barrier_sd", "hop_asymmetry", "E_hop_1D", "E_hop_2D", "E_hop_3D", "E_hop_a", "E_hop_b", "E_hop_c", "trap_max", "trap_mean", "hop_bypass_dim", "E_hop_bypass", "dE_hop_bypass"];
+export function hopBarrierFeatureValues(cr: Crystal, hops: Hop[], barriers: (HopBarrier | null)[] | null, mobileEl: string): Record<string, number | null> {
+  const keys = ["hop_barrier_min", "hop_barrier_mean", "hop_barrier_sd", "hop_asymmetry", "E_hop_1D", "E_hop_2D", "E_hop_3D", "E_hop_a", "E_hop_b", "E_hop_c", "trap_max", "trap_mean", "trap_isolated", "trap_unresolved", "hop_bypass_dim", "E_hop_bypass", "dE_hop_bypass"];
   const ok = barriers ? hops.map((h, i) => ({ h, b: barriers[i], i })).filter((x): x is Barriered => !!x.b) : [];
-  if (!ok.length) return Object.fromEntries(keys.map((k) => [k, null]));
+  const empty = Object.fromEntries(keys.map((k) => [k, null]));
+  if (!barriers) return empty;
+  const mobile = cr.positions.filter((p) => p.occupants.some((o) => cr.sites[o.site].element === mobileEl));
+  const incident = new Set(hops.flatMap((h) => [h.a, h.b]));
+  const failed = new Set(hops.flatMap((h, i) => barriers[i] ? [] : [h.a, h.b]));
+  const isolated = mobile.filter((p) => !incident.has(p.index)).length;
+  const unresolved = mobile.filter((p) => failed.has(p.index)).length;
+  const diagnostic = { trap_isolated: isolated, trap_unresolved: unresolved };
+  if (!ok.length) return { ...empty, ...diagnostic };
   // one barrier per hop: from the lower of its two sites
   const bs = ok.map(({ b }) => Math.max(b.fwd, b.rev));
   const mean = bs.reduce((a, b) => a + b, 0) / bs.length;
@@ -220,19 +226,24 @@ export function hopBarrierFeatureValues(cr: Crystal, hops: Hop[], barriers: (Hop
     leave(h.a, b.fwd);
     leave(h.b, b.rev);
   }
-  const traps = [...escape.values()];
+  const traps = mobile.map((p) => escape.get(p.index) ?? Infinity);
+  const complete = traps.length > 0 && !isolated && !unresolved;
 
-  // robustness: block the bottleneck windows of the group of look-alike hops (HopClass) that completed the highest
-  // dimension, i.e. drop every hop whose saddle lies in one of them (longer hops often cross the same window), and connect again
+  // Evaluate every geometric group at the limiting threshold independently and report
+  // the worst loss (dimension first, then energy). Equal-energy insertion order is irrelevant.
   const D = net.rank;
   let bypass: { dim: number; E: number | null } | null = null;
   if (D > 0) {
     const L = cr.lattice;
     const fracOf = (c: Vec3) => [0, 1, 2].map((r) => L.inv[r][0] * c[0] + L.inv[r][1] * c[1] + L.inv[r][2] * c[2]) as Vec3;
-    const critical = hopClasses(cr, hops).find((c) => c.members.includes(net.completes[D - 1]!))!;
-    const windows = critical.members.flatMap((i) => (barriers![i] ? [fracOf(barriers![i]!.saddle)] : []));
-    const rest = networkThresholds(ok.filter(({ b }) => !windows.some((w) => pbcDist(cr, fracOf(b.saddle), w) <= BYPASS_WINDOW)));
-    bypass = { dim: rest.rank, E: rest.dim[D - 1] };
+    const threshold = net.dim[D - 1]!;
+    const candidates = hopClasses(cr, hops).filter((c) => c.members.some((i) => barriers[i] && Math.abs(barriers[i]!.Esad - threshold) <= 1e-9));
+    for (const critical of candidates) {
+      const windows = critical.members.flatMap((i) => (barriers[i] ? [fracOf(barriers[i]!.saddle)] : []));
+      const rest = networkThresholds(ok.filter(({ b }) => !windows.some((w) => pbcDist(cr, fracOf(b.saddle), w) <= BYPASS_WINDOW)));
+      const result = { dim: rest.rank, E: rest.dim[D - 1] };
+      if (!bypass || result.dim < bypass.dim || (result.dim === bypass.dim && (result.E ?? Infinity) > (bypass.E ?? Infinity))) bypass = result;
+    }
   }
   return {
     hop_barrier_min: Math.min(...bs),
@@ -245,8 +256,9 @@ export function hopBarrierFeatureValues(cr: Crystal, hops: Hop[], barriers: (Hop
     E_hop_a: net.axis[0],
     E_hop_b: net.axis[1],
     E_hop_c: net.axis[2],
-    trap_max: Math.max(...traps),
-    trap_mean: traps.reduce((a, b) => a + b, 0) / traps.length,
+    ...diagnostic,
+    trap_max: complete ? Math.max(...traps) : null,
+    trap_mean: complete ? traps.reduce((a, b) => a + b, 0) / traps.length : null,
     hop_bypass_dim: bypass ? bypass.dim : null,
     E_hop_bypass: bypass?.E ?? null,
     dE_hop_bypass: bypass?.E != null ? bypass.E - net.dim[D - 1]! : null,

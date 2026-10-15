@@ -8,6 +8,52 @@ const server = await createServer({ server: { middlewareMode: true }, logLevel: 
 try {
   const p = await server.ssrLoadModule('/src/lib/pipeline.ts');
   const { blocksWithAtoms } = await server.ssrLoadModule('/src/lib/doc.ts');
+  const { makeLattice } = await server.ssrLoadModule('/src/lib/structure.ts');
+  const { hopBarrierFeatureValues } = await server.ssrLoadModule('/src/lib/hopBarriers.ts');
+  const { computeGrid } = await server.ssrLoadModule('/src/lib/bvse.ts');
+  const cr = {
+    lattice: makeLattice(6, 8, 10, 90, 90, 90),
+    sites: [{ element: 'Li' }, { element: 'Li' }],
+    positions: [0, 1].map((index) => ({ index, frac: [0.3 * index, 0, 0], cart: [1.8 * index, 0, 0], group: `Li${index + 1}`, occupants: [{ site: index, occ: 1 }] })),
+  };
+  const hop = (t, d) => ({ a: 0, b: 0, t, d, rb: 0.5, mid: [0, 0, 0] });
+  const bar = (Esad, saddle) => ({ Esad, Ea: 0, Eb: 0, fwd: Esad, rev: Esad, saddle });
+  const hx = hop([1, 0, 0], 6), hy = hop([0, 1, 0], 8), hy2 = hop([0, 2, 0], 16);
+  const bx = bar(0.2, [3, 0, 0]), by = bar(0.2, [0, 4, 0]), by2 = bar(0.3, [0, 2, 0]);
+  // Every permutation of tied limiting groups gives the same conservative bypass result.
+  const one = { ...cr, positions: cr.positions.slice(0, 1) };
+  const expected = hopBarrierFeatureValues(one, [hx, hy, hy2], [bx, by, by2], 'Li');
+  for (const order of [[0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]) {
+    assert.deepEqual(hopBarrierFeatureValues(one, order.map((i) => [hx, hy, hy2][i]), order.map((i) => [bx, by, by2][i]), 'Li'), expected);
+  }
+  assert.equal(expected.hop_bypass_dim, 1);
+  assert.equal(expected.E_hop_bypass, null);
+  // A site without geometric hops and a failed edge are distinct missing-data conditions.
+  const isolated = hopBarrierFeatureValues(cr, [hx], [bx], 'Li');
+  assert.equal(isolated.trap_isolated, 1);
+  assert.equal(isolated.trap_unresolved, 0);
+  assert.equal(isolated.trap_max, null);
+  assert.equal(isolated.trap_mean, null);
+  const failed = hopBarrierFeatureValues(cr, [{ ...hx, b: 1 }], [null], 'Li');
+  assert.equal(failed.trap_unresolved, 2);
+  assert.equal(failed.trap_isolated, 0);
+  assert.equal(failed.trap_max, null);
+  assert.equal(hopBarrierFeatureValues(cr, [], [], 'Li').trap_isolated, 2);
+  assert.equal(hopBarrierFeatureValues(cr, [], null, 'Li').trap_isolated, null);
+  // E_1D=5.9 eV, with the rest of the connected region at 6.05 eV. Measure to 6.1, beyond the 6 eV cap.
+  {
+    const field = { setup: { hasEnergy: true }, eval: (x, y, z) => {
+      let e = 6.05;
+      if (Math.round(y) === 0 && Math.round(z) === 0) e = 5.9;
+      if (Math.round(x) === 3 && Math.round(y) === 3 && Math.round(z) === 3) e = 0;
+      return [e, 1];
+    } };
+    const grid = await computeGrid(field, { lattice: makeLattice(6, 6, 6, 90, 90, 90) }, { resolution: 1, maxPoints: 1000, eCap: 6 });
+    assert.deepEqual(grid.conn, { low: 1, connected: 1 });
+    assert.ok(Math.abs(grid.E[0] - 5.9) < 1e-6);
+    assert.equal(grid.E[1], Infinity, 'threshold search itself remains capped');
+    assert.equal(grid.E[2], Infinity);
+  }
   const run = async (f, res = 0.2) => {
     const s = p.prepareStructure(blocksWithAtoms(await readFile(`src/samples/${f}.cif`, 'utf8'))[0]);
     const st = p.staticStage(s, p.DEFAULT_HOP_CUTOFF);
