@@ -53,6 +53,16 @@ S['AgI_alpha'] = cif('AgI_alpha', 'alpha-AgI (superionic, ~420 K)', (5.07, 5.07,
   [('I1','I-',0,0,0,1),('Ag1','Ag+',0.25,0,0.5,0.1667)], {'I-':-1,'Ag+':1}, ref="Ag disordered over the 12d tetrahedral sites (Strock 1934; Cava et al. 1977)")
 S['Li3N'] = cif('Li3N', 'Li3N (alpha)', (3.648, 3.648, 3.875, 90, 90, 120), 'P 6/m m m',
   [('N1','N3-',0,0,0,1),('Li1','Li+',0,0,0.5,1),('Li2','Li+',0.3333333,0.6666667,0,1)], {'N3-':-3,'Li+':1}, ref="Rabenau & Schulz, J. Less-Common Met. 50 (1976) 155")
+# sulphide electrolytes: cell, coordinates and occupancies as published (standard uncertainties omitted)
+S['Li10GeP2S12'] = cif('LGPS', 'Li10GeP2S12 (LGPS, single crystal, 298 K)', (8.719, 8.719, 12.639, 90, 90, 90), 'P 42/n m c :1',
+  [('Li1','Li+',0.267,0.273,0.194,0.466),('Li2','Li+',0,0.5,0.9454,0.86),('Li3','Li+',0.248,0.248,0,0.74),('Li4','Li+',0,0,0.251,0.81),
+   ('Ge1','Ge4+',0,0.5,0.69154,0.5),('P1','P5+',0,0.5,0.69154,0.5),('P2','P5+',0,0,0.5,1),
+   ('S1','S2-',0,0.18857,0.40707,1),('S2','S2-',0,0.29557,0.09727,1),('S3','S2-',0,0.69901,0.79168,1)],
+  {'Li+':1,'Ge4+':4,'P5+':5,'S2-':-2}, ref="Kuhn, Koehler & Lotsch, Phys. Chem. Chem. Phys. 15 (2013) 11620 (origin choice 1)")
+S['Li6PS5Cl'] = cif('Li6PS5Cl', 'Li6PS5Cl (argyrodite)', (9.85485, 9.85485, 9.85485, 90, 90, 90), 'F -4 3 m',
+  [('Li1','Li+',0.3202,0.0183,0.6798,0.5),('Cl1','Cl-',0,0,0,0.385),('S3','S2-',0,0,0,0.615),('Cl2','Cl-',0.25,0.25,0.75,0.615),
+   ('S1','S2-',0.25,0.25,0.75,0.385),('P1','P5+',0,0,0.5,1),('S2','S2-',0.12,-0.12,0.62,1)],
+  {'Li+':1,'P5+':5,'S2-':-2,'Cl-':-1}, ref="Dewald et al., Chem. Mater. 31 (2019) 8328 (S/Cl mixed on 4a and 4d)")
 for k,v in S.items():
     open(f'{out}/{k}.cif','w').write(v)
 print(os.listdir(out))

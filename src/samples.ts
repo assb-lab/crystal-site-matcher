@@ -6,6 +6,8 @@ import SrTiO3 from "./samples/SrTiO3.cif?raw";
 import Rutile from "./samples/TiO2_rutile.cif?raw";
 import AgI from "./samples/AgI_alpha.cif?raw";
 import Li3N from "./samples/Li3N.cif?raw";
+import LGPS from "./samples/Li10GeP2S12.cif?raw";
+import Argyrodite from "./samples/Li6PS5Cl.cif?raw";
 
 export interface Sample {
   id: string; // display name: i18n key sample.<id>
@@ -19,6 +21,8 @@ export const SAMPLES: Sample[] = [
   { id: "LiCoO2", text: LiCoO2, site: "Co1" },
   { id: "Li3N", text: Li3N, site: "Li2" },
   { id: "AgI_alpha", text: AgI, site: "Ag1" },
+  { id: "LGPS", text: LGPS, site: "Ge1" },
+  { id: "Li6PS5Cl", text: Argyrodite, site: "Li1" },
   { id: "YAG", text: YAG, site: "Y1" },
   { id: "spinel", text: Spinel, site: "Mg1" },
   { id: "SrTiO3", text: SrTiO3, site: "Sr1" },
