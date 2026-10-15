@@ -5,7 +5,7 @@ CIF ファイルの結晶構造で、あるサイトのイオンを別のイオ�
 ## 使い方
 
 0. **左の縦タブ**に開いている構造がサムネイル付きで並びます。複数ファイル・複数データブロックの CIF をまとめて開けます（1 ブロック = 1 構造）。上の「比較」で比較モードに切り替え、チェックで対象を選びます。
-1. 「CIF を開く」かドラッグ＆ドロップで CIF を読み込む（サンプル 8 種あり）。
+1. 「CIF を開く」かドラッグ＆ドロップで CIF を読み込む（サンプル 10 種あり）。
 2. 3D 表示で原子をクリックしてサイトを選ぶ。ドラッグで回転、右ドラッグで移動、ホイールで拡大。a / b / c / a* / b* / c* ボタンで軸方向から表示。
    - 「表示設定 → 多面体」で、元素ごとに描く多面体の中心をカチオン／アニオンで切り替えられる（アニオン中心なら Li₃N の NLi₈ など）。
 3. **サイト解析** タブ
@@ -150,4 +150,4 @@ MIT License © 2026 assb-lab（[LICENSE](LICENSE)）。同梱データの出典�
 - BVlain (MIT License, A. D. Dembitskiy) — BVSE（softBV）パラメータ。元は H. Chen & S. Adams, *IUCrJ* 4, 614 (2017); H. Chen, L. L. Wong & S. Adams, *Acta Cryst.* B75, 18 (2019)
 - 構造情報量: S. V. Krivovichev, *Acta Cryst.* A68, 393 (2012)
 - 頂点共有骨格の指標: K. Jun et al., *Nat. Mater.* 21, 924 (2022)
-- サンプル構造: LiFePO₄ (Streltsov et al. 1993)、Y₃Al₅O₁₂ (Euler & Bruce 1965)、LiCoO₂ (Akimoto et al. 1998)、TiO₂ ルチル (Burdett et al. 1987)、Li₃N (Rabenau & Schulz 1976)、α-AgI（Ag を 12d に統計分布）、MgAl₂O₄、SrTiO₃（文献値を丸めた代表値）
+- サンプル構造: LiFePO₄ (Streltsov et al. 1993)、Y₃Al₅O₁₂ (Euler & Bruce 1965)、LiCoO₂ (Akimoto et al. 1998)、TiO₂ ルチル (Burdett et al. 1987)、Li₃N (Rabenau & Schulz 1976)、Li₁₀GeP₂S₁₂ (Kuhn, Köhler & Lotsch 2013)、Li₆PS₅Cl (Dewald et al. 2019)、α-AgI（Ag を 12d に統計分布）、MgAl₂O₄、SrTiO₃（文献値を丸めた代表値）

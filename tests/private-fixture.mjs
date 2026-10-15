@@ -1,4 +1,4 @@
-// Checks on real structures (see private.test.mjs): usage `node tests/private-fixture.mjs <mode> <cif>`.
+// Checks on the sulphide electrolytes (see private.test.mjs): usage `node tests/private-fixture.mjs <mode> <cif>`.
 // Expected values are worked out by hand from the site occupancies and Shannon radii, or are
 // properties of the BVSE landscape that do not depend on the grid spacing.
 import assert from 'node:assert/strict';

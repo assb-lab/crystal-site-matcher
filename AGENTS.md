@@ -98,6 +98,7 @@ tests/            node:test。*-fixture.mjs が vite の ssrLoadModule で src �
 - UI を変えたら、ブラウザで日本語・英語の両方、ライト・ダーク、スマホ幅（約 400px）を確認します。あわせて、コンソールエラーがないことと横スクロールが出ないことも確認します。
 - CLI を変えたら `pnpm build` のあと `node dist/csm-features.mjs src/samples -o /tmp/f.csv` などで実際に動かします。
 - ICSD など再配布できない CIF はコミットしません。回帰テストに使うときは `tests/private/`（gitignore 済み）か `CSM_PRIVATE_CIFS` のフォルダから読み、ファイルがなければスキップします（`tests/private.test.mjs`）。
+  - 同梱が必要な構造は、CIF ファイルではなく原著論文の格子定数・座標・占有率を `scripts/make-samples.py` に入力し、出典を `ref` に書きます（LGPS とアルジロダイトがこの方法です）。
 
 ## Git / GitHub の進め方
 
