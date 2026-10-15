@@ -187,8 +187,10 @@ export function crystalFromCif(block: CifBlock): Crystal {
     c = num("_cell_length_c");
   // a missing or unknown ("?", ".") angle is 90°; a given value, even 0, is checked below
   const angle = (tag: string) => {
-    const v = num(tag);
-    return Number.isNaN(v) ? 90 : v;
+    const raw = getItem(block, tag);
+    if (raw === undefined) return 90;
+    // Missing/unknown values are different from malformed numeric tokens.
+    return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?(?:\(\d+\))?$/.test(raw.trim()) ? cifNumber(raw) : NaN;
   };
   const alpha = angle("_cell_angle_alpha"),
     beta = angle("_cell_angle_beta"),
@@ -197,6 +199,12 @@ export function crystalFromCif(block: CifBlock): Crystal {
   const bad = cellProblem(a, b, c, alpha, beta, gamma);
   if (bad) throw new MsgError(`err.cell.${bad}`, { a, b, c, alpha, beta, gamma });
   const lattice = makeLattice(a, b, c, alpha, beta, gamma);
+  // Finite input lengths can still overflow/underflow the volume or inverse matrix.
+  const determinant = dot(lattice.A, cross(lattice.B, lattice.C));
+  if (!(lattice.volume > 0 && Number.isFinite(lattice.volume) && determinant > 0 && Number.isFinite(determinant)) ||
+      ![...lattice.A, ...lattice.B, ...lattice.C, ...lattice.inv.flat(), ...lattice.recip].every(Number.isFinite) ||
+      !lattice.recip.every((r) => r > 0) || Math.abs(determinant / lattice.volume - 1) > 1e-8)
+    throw new MsgError("err.cell.numeric", { a, b, c, alpha, beta, gamma });
 
   // ---- symmetry ----
   let ops: SymOp[] = [];

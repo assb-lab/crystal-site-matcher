@@ -41,6 +41,9 @@ Li1 Li+ 0 0 0
   rejects('err.cell.length', 3, -3, 3, 90, 90, 90);
   rejects('err.cell.length', 3, 3, 0, 90, 90, 90);
   rejects('err.noCell', '?', 3, 3, 90, 90, 90);
+  for (const token of ['bad', 'NaN', 'Infinity', '90degrees', '90(1)garbage']) rejects('err.cell.angle', 3, 3, 3, token, 90, 90);
+  for (const size of ['1e200', '1e-200']) rejects('err.cell.numeric', size, size, size, 90, 90, 90);
+  assert.equal(build(3, 3, 3, '9e1(2)', '90.0(1)', 90).lattice.volume, 27, 'valid uncertainty and exponent');
   assert.equal(S.cellProblem(3, 3, 3, 10, 10, 170), 'volume');
   assert.equal(S.cellProblem(3, 3, 3, 90, 90, 90), null);
 
@@ -57,6 +60,12 @@ Li1 Li+ 0 0 0
   assert.equal(build(3, 4, 5).lattice.volume, 60);
   assert.equal(build(3, 4, 5, '?', '.', 90).lattice.gamma, 90);
 
+  for (const params of [[3, 3, 3, 'bad', 90, 90], ['1e200', '1e200', '1e200', 90, 90, 90], ['1e-200', '1e-200', '1e-200', 90, 90, 90]]) {
+    const result = await x.extractFromText(cif(...params), 'invalid.cif', { grid: null });
+    assert.equal(result.records.length, 0);
+    assert.equal(result.errors.length, 1);
+    assert.doesNotMatch(result.errors[0].message, /[ぁ-んァ-ヶ一-龯]/);
+  }
   // the CLI reports the error in English and produces no record (no NaN downstream)
   const r = await x.extractFromText(cif(3, 3, 3, 10, 10, 170), 'bad.cif', { grid: null });
   assert.equal(r.records.length, 0);
