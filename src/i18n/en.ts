@@ -5,6 +5,8 @@ export const en: Record<keyof typeof ja, string> = {
   "app.drop": "Drop CIF files to open them",
   "app.emptyBody": "Open or drop a CIF file, or add a sample from the bottom left.",
   "app.emptyTitle": "No structure open",
+  "app.lgpsRepo": "LGPS Predicator",
+  "app.lgpsRepoHint": "LGPS Predicator on GitHub (opens in a new tab)",
   "app.open": "Open CIF",
   "app.openHint": "Multiple files and data blocks supported; drag and drop works too.",
   "app.tagline": "Read structures through coordination polyhedra, Shannon radii and ion-conduction features",

@@ -191,7 +191,12 @@ export default function App() {
             </svg>
           </span>
           <div>
-            <h1>Crystal Site Matcher</h1>
+            <div className="brand-title">
+              <h1>Crystal Site Matcher</h1>
+              <a className="repo-link" href="https://github.com/assb-lab/lgps-predicator" target="_blank" rel="noopener noreferrer" aria-label={t("app.lgpsRepoHint")} title={t("app.lgpsRepoHint")}>
+                {t("app.lgpsRepo")} <span aria-hidden="true">↗</span>
+              </a>
+            </div>
             <p className="brand-sub">{t("app.tagline")}</p>
           </div>
         </div>
