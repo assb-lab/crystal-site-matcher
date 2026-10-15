@@ -191,12 +191,7 @@ export default function App() {
             </svg>
           </span>
           <div>
-            <div className="brand-title">
-              <h1>Crystal Site Matcher</h1>
-              <a className="repo-link" href="https://github.com/assb-lab/crystal-site-matcher" target="_blank" rel="noopener noreferrer" aria-label={t("app.repoHint")} title={t("app.repoHint")}>
-                {t("app.repo")} <span aria-hidden="true">↗</span>
-              </a>
-            </div>
+            <h1>Crystal Site Matcher</h1>
             <p className="brand-sub">{t("app.tagline")}</p>
           </div>
         </div>
@@ -218,7 +213,14 @@ export default function App() {
           />
           <span className="muted small hide-narrow">{t("app.openHint")}</span>
           <LangToggle />
-          <ThemeToggle value={themePref} onChange={setThemePref} />
+          <div className="appearance-controls">
+            <ThemeToggle value={themePref} onChange={setThemePref} />
+            <a className="repo-link" href="https://github.com/assb-lab/crystal-site-matcher" target="_blank" rel="noopener noreferrer" aria-label={t("app.repoHint")} title={t("app.repoHint")}>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false">
+                <path d="M12 .75a11.25 11.25 0 0 0-3.558 21.923c.563.104.768-.244.768-.542 0-.267-.01-.974-.015-1.913-3.13.68-3.79-1.508-3.79-1.508-.511-1.3-1.249-1.646-1.249-1.646-1.022-.699.077-.685.077-.685 1.13.08 1.725 1.16 1.725 1.16 1.004 1.72 2.633 1.223 3.275.935.102-.727.393-1.223.715-1.504-2.498-.284-5.124-1.249-5.124-5.565 0-1.23.44-2.233 1.16-3.02-.116-.284-.503-1.43.11-2.98 0 0 .945-.303 3.094 1.153A10.79 10.79 0 0 1 12 6.18c.956.004 1.919.129 2.818.379 2.148-1.456 3.09-1.153 3.09-1.153.616 1.55.229 2.696.113 2.98.722.787 1.157 1.79 1.157 3.02 0 4.327-2.63 5.278-5.136 5.556.404.35.764 1.042.764 2.1 0 1.516-.014 2.739-.014 3.11 0 .3.203.65.774.54A11.25 11.25 0 0 0 12 .75Z" />
+              </svg>
+            </a>
+          </div>
         </div>
       </header>
 
