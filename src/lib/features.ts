@@ -168,6 +168,8 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "E_hop_c", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "trap_max", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "trap_mean", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "trap_isolated", digits: 0, group: "grid", async: true },
+  { key: "trap_unresolved", digits: 0, group: "grid", async: true },
   { key: "hop_bypass_dim", digits: 0, group: "grid", async: true },
   { key: "E_hop_bypass", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "dE_hop_bypass", unit: "eV", digits: 3, group: "grid", async: true },

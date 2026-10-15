@@ -300,15 +300,17 @@ export async function computeGrid(
       const idx = order[q];
       const v = val(idx);
       if (connDelta !== undefined && !conn && !Number.isNaN(dim[0]) && v > dim[0] + connDelta) conn = measure(q);
-      if (stop(v)) break;
+      const beyondCap = stop(v);
+      // The threshold search is capped, but its volume measurement may lie above the cap.
+      if (beyondCap && (connDelta === undefined || conn !== null || Number.isNaN(dim[0]))) break;
       if (uf.maxRank === 3 && (connDelta === undefined || conn)) break;
       uf.make(idx);
       for (const [nb, s] of neighbors(idx)) {
         if (!uf.active(nb)) continue;
         const before = uf.maxRank;
         uf.union(idx, nb, s);
-        if (uf.maxRank > before) for (let d = before; d < uf.maxRank; d++) if (Number.isNaN(dim[d])) dim[d] = v;
-        for (let k = 0; k < 3; k++) if (uf.axes[k] && Number.isNaN(axis[k])) axis[k] = v;
+        if (!beyondCap && uf.maxRank > before) for (let d = before; d < uf.maxRank; d++) if (Number.isNaN(dim[d])) dim[d] = v;
+        for (let k = 0; k < 3; k++) if (!beyondCap && uf.axes[k] && Number.isNaN(axis[k])) axis[k] = v;
       }
     }
     if (connDelta !== undefined && !conn && !Number.isNaN(dim[0])) conn = measure(q);

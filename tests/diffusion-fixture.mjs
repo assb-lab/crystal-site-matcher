@@ -31,18 +31,19 @@ ${atoms}
     ).crystal;
   const bar = (Esad, Ea, Eb) => ({ Esad, Ea, Eb, fwd: Esad - Ea, rev: Esad - Eb, saddle: [0, 0, 0] });
 
+  const energies = (cr, values = []) => cr.positions.map((p, i) => ({ pos: p.index, E: values[i] ?? 0 }));
   // one site per orthorhombic cell, jumps ±a, ±b, ±c with rate k each way: D_xx = k a² (and so on)
   {
     const cr = cell(3, 4, 5, 'Li1 Li+ 0 0 0');
     const hops = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((t, i) => ({ a: 0, b: 0, t, d: [3, 4, 5][i], rb: 0.5, mid: [0, 0, 0] }));
     const Es = [0.2, 0.3, 0.9];
-    const d = Dm.diffusionTensor(cr, hops, Es.map((e) => bar(e, 0, 0)), 300);
+    const d = Dm.diffusionTensor(cr, hops, Es.map((e) => bar(e, 0, 0)), 300, energies(cr));
     [3, 4, 5].forEach((L, i) => rel(d.D[i][i], Dm.NU0 * Math.exp(-Es[i] / kT) * L * L * 1e-16, 1e-9, `D_${'xyz'[i]}`));
     assert.ok(Math.abs(d.D[0][1]) < 1e-12 * d.D[0][0] && Math.abs(d.D[1][2]) < 1e-12 * d.D[0][0]);
     rel(d.axis[1], d.D[1][1], 1e-12, 'D along b');
     // the c hop is 0.7 eV above the a hop: about 1e-12 of D_x, below the 1e-6 counted as diffusion
     assert.equal(d.dim, 2);
-    const v = Dm.diffusionFeatureValues(cr, hops, Es.map((e) => bar(e, 0, 0)));
+    const v = Dm.diffusionFeatureValues(cr, hops, Es.map((e) => bar(e, 0, 0)), energies(cr));
     assert.equal(v.logD_c, null);
     assert.equal(v.D_dim, 2);
   }
@@ -59,16 +60,67 @@ ${atoms}
     const bs = [bar(S1, E1, E2), bar(S2, E2, E1)];
     const Z = 1 + Math.exp(-E2 / kT);
     const w = [S1, S2].map((S) => (Dm.NU0 * Math.exp(-S / kT)) / Z);
-    const d = Dm.diffusionTensor(cr, hops, bs, 300);
+    const d = Dm.diffusionTensor(cr, hops, bs, 300, energies(cr, [E1, E2]));
     rel(d.D[0][0], (L * L * 1e-16) / (1 / w[0] + 1 / w[1]), 1e-9, 'series chain');
     assert.equal(d.dim, 1);
     // the naive sum Σ w Δr² (no corrector) would be larger
     assert.ok(d.D[0][0] < (w[0] * (0.3 * L) ** 2 + w[1] * (0.7 * L) ** 2) * 1e-16);
     // Arrhenius slope: the chain is limited by the higher saddle, measured from the lower site
-    const v = Dm.diffusionFeatureValues(cr, hops, bs);
+    const v = Dm.diffusionFeatureValues(cr, hops, bs, energies(cr, [E1, E2]));
     assert.ok(Math.abs(v.Ea_D - S2) < 0.03, `Ea_D ${v.Ea_D}`);
   }
 
+  // A weak link can be the only conducting bridge: preserve it at contrasts far below 1e-12.
+  {
+    const cr = cell(6, 20, 20, 'Li1 Li+ 0 0 0\nLi2 Li+ 0.3 0 0');
+    const hops = [
+      { a: 0, b: 1, t: [0, 0, 0] },
+      { a: 1, b: 0, t: [1, 0, 0] },
+    ];
+    for (const slow of [1, 1.8]) {
+      const bs = [bar(0.2, 0, 0), bar(slow, 0, 0)];
+      const ws = [0.2, slow].map((S) => Dm.NU0 * Math.exp(-S / kT) / 2);
+      const want = 36e-16 / (1 / ws[0] + 1 / ws[1]);
+      const d = Dm.diffusionTensor(cr, hops, bs, 300, energies(cr));
+      rel(d.D[0][0], want, 1e-9, 'weak series bridge');
+      assert.equal(d.dim, 1);
+      const v = Dm.diffusionFeatureValues(cr, hops, bs, energies(cr));
+      assert.ok(Number.isFinite(v.logD) && Math.abs(v.Ea_D - slow) < 1e-8);
+    }
+    const zero = Dm.diffusionTensor(cr, hops.slice(0, 1), [bar(0.2, 0, 0)], 300, energies(cr));
+    assert.equal(zero.D[0][0], 0, 'finite dimer has no diffusion');
+    assert.equal(zero.dim, 0);
+    assert.equal(Dm.diffusionTensor(cr, hops, [bar(0.2, 0, 0), null], 300, energies(cr)), null, 'missing path is not a zero rate');
+    assert.equal(Dm.diffusionTensor(cr, hops, [bar(30, 0, 0), bar(30, 0, 0)], 300, energies(cr)), null, 'numerical underflow is unavailable');
+  }
+  // Isolated mobile sites still carry equilibrium probability, including deeper trapped sites.
+  {
+    const cr = cell(3, 20, 20, 'Li1 Li+ 0 0 0\nLi2 Li+ 0.5 0.5 0');
+    const hops = [{ a: 0, b: 0, t: [1, 0, 0] }], bs = [bar(0.2, 0, 0)];
+    const base = Dm.NU0 * Math.exp(-0.2 / kT) * 9e-16;
+    for (const isolatedE of [0, -0.1]) {
+      const d = Dm.diffusionTensor(cr, hops, bs, 300, energies(cr, [0, isolatedE]));
+      rel(d.D[0][0], base / (1 + Math.exp(-isolatedE / kT)), 1e-9, 'isolated-site occupation');
+    }
+    const v = Dm.diffusionFeatureValues(cr, [], [], energies(cr));
+    assert.equal(v.D_dim, 0);
+    assert.equal(v.logD, null);
+  }
+  // Parallel two-edge periodic chains: series resistance on each branch, conductances add.
+  {
+    const cr = cell(6, 20, 20, 'Li1 Li+ 0 0 0\nLi2 Li+ 0.3 0 0\nLi3 Li+ 0.7 0 0');
+    const hops = [
+      { a: 0, b: 1, t: [0, 0, 0] }, { a: 1, b: 0, t: [1, 0, 0] },
+      { a: 0, b: 2, t: [0, 0, 0] }, { a: 2, b: 0, t: [1, 0, 0] },
+    ];
+    const Es = [0.2, 0.3, 0.4, 0.6], bs = Es.map((E) => bar(E, 0, 0));
+    const ws = Es.map((E) => Dm.NU0 * Math.exp(-E / kT) / 3);
+    const want = 36e-16 * (1 / (1 / ws[0] + 1 / ws[1]) + 1 / (1 / ws[2] + 1 / ws[3]));
+    for (const order of [[0, 1, 2, 3], [3, 1, 0, 2], [2, 3, 1, 0]]) {
+      const d = Dm.diffusionTensor(cr, order.map((i) => hops[i]), order.map((i) => bs[i]), 300, energies(cr));
+      rel(d.D[0][0], want, 1e-9, 'parallel branches');
+    }
+  }
   const run = async (f) => {
     const s = p.prepareStructure(blocksWithAtoms(await readFile(`src/samples/${f}.cif`, 'utf8'))[0]);
     const st = p.staticStage(s, p.DEFAULT_HOP_CUTOFF);

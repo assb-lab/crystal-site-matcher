@@ -17,8 +17,6 @@ export const NU0 = 1e13;
 /** Temperatures (K) of the reported tensor and of the Arrhenius slope. */
 export const DIFF_T = 300;
 export const DIFF_T2 = 400;
-/** Hops slower than this fraction of the fastest one are left out (they carry no measurable flux and spoil the solve). */
-const W_MIN = 1e-12;
 /** Eigenvalues below this fraction of the largest count as no diffusion in that direction. */
 const D_ZERO = 1e-6;
 
@@ -30,89 +28,74 @@ export interface Diffusion {
   dim: number; // number of directions with diffusion
 }
 
-/** Solve A x = B (dense, partial pivoting) for several right-hand sides in place; A is n×n, B is n×m. */
-function solve(A: number[][], B: number[][]): number[][] {
-  const n = A.length;
-  for (let c = 0; c < n; c++) {
-    let p = c;
-    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
-    [A[c], A[p]] = [A[p], A[c]];
-    [B[c], B[p]] = [B[p], B[c]];
-    const piv = A[c][c];
-    for (let r = c + 1; r < n; r++) {
-      const f = A[r][c] / piv;
-      if (!f) continue;
-      for (let k = c; k < n; k++) A[r][k] -= f * A[c][k];
-      for (let k = 0; k < B[r].length; k++) B[r][k] -= f * B[c][k];
-    }
-  }
-  for (let c = n - 1; c >= 0; c--) {
-    for (let k = 0; k < B[c].length; k++) {
-      let s = B[c][k];
-      for (let j = c + 1; j < n; j++) s -= A[c][j] * B[j][k];
-      B[c][k] = s / A[c][c];
-    }
-  }
-  return B;
+export interface MobileSiteEnergy {
+  pos: number;
+  E: number;
 }
 
-export function diffusionTensor(cr: Crystal, hops: Hop[], barriers: (HopBarrier | null)[] | null, T: number): Diffusion | null {
-  if (!barriers) return null;
-  const ok = hops.map((h, i) => ({ h, b: barriers[i] })).filter((x): x is { h: Hop; b: HopBarrier } => !!x.b);
-  if (!ok.length) return null;
-  const kT = K_B * T;
-  // site energies (BVSE at the CIF position, the same for every hop touching it)
-  const E = new Map<number, number>();
-  for (const { h, b } of ok) {
-    if (!E.has(h.a)) E.set(h.a, b.Ea);
-    if (!E.has(h.b)) E.set(h.b, b.Eb);
-  }
+/**
+ * Minimise the network's quadratic energy by positive star–mesh elimination.
+ * Unlike subtracting nearly equal entries of a dense Laplacian, this keeps weak series links.
+ * Parallel edges are merged by completing the square, retaining the constant tensor term.
+ */
+export function diffusionTensor(cr: Crystal, hops: Hop[], barriers: (HopBarrier | null)[] | null, T: number, siteE: MobileSiteEnergy[] | null): Diffusion | null {
+  if (!barriers || !siteE?.length || !(T > 0) || !Number.isFinite(T)) return null;
+  // A failed path is missing information, not evidence of a zero transition rate.
+  if (hops.some((_, i) => !barriers[i])) return null;
+  const E = new Map(siteE.map((s) => [s.pos, s.E]));
+  if ([...E.values()].some((e) => !Number.isFinite(e))) return null;
   const nodes = [...E.keys()];
   const idx = new Map(nodes.map((p, i) => [p, i]));
+  const kT = K_B * T;
   const eMin = Math.min(...E.values());
+  // Include disconnected and isolated mobile sites in the Boltzmann normalisation.
   const Z = nodes.reduce((s, p) => s + Math.exp(-(E.get(p)! - eMin) / kT), 0);
-  // w = π_a k_ab depends on the saddle only (detailed balance holds by construction)
-  const edges = ok.map(({ h, b }) => {
-    const A = cr.positions[h.a].frac,
-      Bf = cr.positions[h.b].frac;
-    const dr = toCart(cr.lattice, [Bf[0] + h.t[0] - A[0], Bf[1] + h.t[1] - A[1], Bf[2] + h.t[2] - A[2]]);
-    return { i: idx.get(h.a)!, j: idx.get(h.b)!, dr, w: (NU0 * Math.exp(-(b.Esad - eMin) / kT)) / Z };
-  });
-  const wMax = Math.max(...edges.map((e) => e.w));
-  const kept = edges.filter((e) => e.w >= wMax * W_MIN);
-
-  // corrector: weighted graph Laplacian L χ = −Σ_j w_ij Δr_ij, grounded at one node of each connected component
-  const parent = nodes.map((_, i) => i);
-  const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])));
-  for (const e of kept) parent[find(e.i)] = find(e.j);
-  const free = nodes.map((_, i) => i).filter((i) => find(i) !== i);
-  const col = new Map(free.map((i, c) => [i, c]));
-  const Lm = free.map(() => new Array(free.length).fill(0));
-  const rhs = free.map(() => [0, 0, 0]);
-  const addTo = (i: number, j: number, w: number, dr: Vec3) => {
-    const ci = col.get(i);
-    if (ci === undefined) return; // grounded row
-    if (i !== j) {
-      Lm[ci][ci] += w;
-      const cj = col.get(j);
-      if (cj !== undefined) Lm[ci][cj] -= w;
-    }
-    for (let k = 0; k < 3; k++) rhs[ci][k] += w * dr[k];
-  };
-  for (const e of kept) {
-    addTo(e.i, e.j, e.w, e.dr);
-    addTo(e.j, e.i, e.w, [-e.dr[0], -e.dr[1], -e.dr[2]]);
-  }
-  const chi: Vec3[] = nodes.map(() => [0, 0, 0]);
-  if (free.length) {
-    const x = solve(Lm, rhs);
-    free.forEach((i, c) => (chi[i] = x[c] as Vec3));
-  }
-
+  type Edge = { w: number; dr: Vec3 };
+  const graph = nodes.map(() => new Map<number, Edge>());
   const D = [0, 1, 2].map(() => [0, 0, 0]);
-  for (const e of kept) {
-    const u = [0, 1, 2].map((k) => e.dr[k] + chi[e.j][k] - chi[e.i][k]);
-    for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) D[p][q] += e.w * u[p] * u[q] * 1e-16; // Å²/s → cm²/s
+  const outer = (w: number, dr: Vec3) => {
+    for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) D[p][q] += w * dr[p] * dr[q] * 1e-16;
+  };
+  const add = (i: number, j: number, w: number, dr: Vec3) => {
+    if (i === j) { outer(w, dr); return; }
+    const old = graph[i].get(j);
+    if (old) {
+      const total = old.w + w;
+      const delta = dr.map((x, k) => x - old.dr[k]) as Vec3;
+      outer(Math.min(old.w, w) * (Math.max(old.w, w) / total), delta);
+      dr = old.dr.map((x, k) => x + (w / total) * delta[k]) as Vec3;
+      w = total;
+    }
+    graph[i].set(j, { w, dr });
+    graph[j].set(i, { w, dr: dr.map((x) => -x) as Vec3 });
+  };
+  for (let k = 0; k < hops.length; k++) {
+    const h = hops[k], b = barriers[k]!;
+    const i = idx.get(h.a), j = idx.get(h.b);
+    if (i === undefined || j === undefined || !Number.isFinite(b.Esad)) return null;
+    const w = NU0 * Math.exp(-(b.Esad - eMin) / kT) / Z;
+    // Underflow cannot be resolved in double precision: report unavailable rather than prune topology.
+    if (!(w > 0) || !Number.isFinite(w)) return null;
+    // The intra-cell position difference is a gradient absorbed into the corrector.
+    // Working with lattice translations avoids spurious transport in finite, non-winding clusters.
+    add(i, j, w, toCart(cr.lattice, h.t));
+  }
+  const active = new Set(nodes.map((_, i) => i));
+  while (active.size) {
+    // Minimum degree limits fill-in; isolated sites contribute probability but no transport.
+    let node = active.values().next().value!;
+    for (const i of active) if (graph[i].size < graph[node].size) node = i;
+    const edges = [...graph[node]];
+    const total = edges.reduce((s, [, e]) => s + e.w, 0);
+    for (const [i] of edges) graph[i].delete(node);
+    for (let a = 0; a < edges.length; a++) for (let b = a + 1; b < edges.length; b++) {
+      const [i, ei] = edges[a], [j, ej] = edges[b];
+      const w = Math.min(ei.w, ej.w) * (Math.max(ei.w, ej.w) / total);
+      if (!(w > 0)) return null;
+      add(i, j, w, ej.dr.map((x, k) => x - ei.dr[k]) as Vec3);
+    }
+    graph[node].clear();
+    active.delete(node);
   }
   const scale = Math.max(...D.map((r) => Math.max(...r.map(Math.abs)))) || 1;
   const eig = symEig3(D.map((r) => r.map((x) => x / scale)))
@@ -127,11 +110,13 @@ export function diffusionTensor(cr: Crystal, hops: Hop[], barriers: (HopBarrier 
 }
 
 /** Feature values of the dilute-limit diffusion tensor (grid group). */
-export function diffusionFeatureValues(cr: Crystal, hops: Hop[], barriers: (HopBarrier | null)[] | null): Record<string, number | null> {
+export function diffusionFeatureValues(cr: Crystal, hops: Hop[], barriers: (HopBarrier | null)[] | null, siteE: MobileSiteEnergy[] | null): Record<string, number | null> {
   const keys = ["logD", "logD_a", "logD_b", "logD_c", "D_dim", "logD_aniso", "Ea_D"];
-  const d1 = diffusionTensor(cr, hops, barriers, DIFF_T);
-  if (!d1 || d1.eig[0] <= 0) return Object.fromEntries(keys.map((k) => [k, null]));
-  const d2 = diffusionTensor(cr, hops, barriers, DIFF_T2)!;
+  const d1 = diffusionTensor(cr, hops, barriers, DIFF_T, siteE);
+  const empty = Object.fromEntries(keys.map((k) => [k, null]));
+  if (!d1) return empty;
+  if (d1.eig[0] <= 0) return { ...empty, D_dim: 0 };
+  const d2 = diffusionTensor(cr, hops, barriers, DIFF_T2, siteE);
   const mean = (d: Diffusion) => (d.D[0][0] + d.D[1][1] + d.D[2][2]) / 3;
   const lg = (x: number) => (x > d1.eig[0] * D_ZERO ? Math.log10(x) : null);
   const aniso = Math.log10(d1.eig[0] / d1.eig[d1.dim - 1]);
@@ -143,6 +128,6 @@ export function diffusionFeatureValues(cr: Crystal, hops: Hop[], barriers: (HopB
     D_dim: d1.dim,
     logD_aniso: aniso < 1e-9 ? 0 : aniso, // rounding noise of an isotropic tensor
     // Arrhenius slope of the mean between DIFF_T and DIFF_T2
-    Ea_D: (K_B * Math.log(mean(d2) / mean(d1))) / (1 / DIFF_T - 1 / DIFF_T2),
+    Ea_D: d2 && mean(d2) > 0 ? (K_B * (Math.log(mean(d2)) - Math.log(mean(d1)))) / (1 / DIFF_T - 1 / DIFF_T2) : null,
   };
 }

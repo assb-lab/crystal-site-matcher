@@ -116,6 +116,6 @@ export async function gridStage(
     siteE,
     minima,
     barriers,
-    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima, s.mobile), ...hopBarrierFeatureValues(s.crystal, hops, barriers), ...diffusionFeatureValues(s.crystal, hops, barriers) },
+    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima, s.mobile), ...hopBarrierFeatureValues(s.crystal, hops, barriers, s.mobile), ...diffusionFeatureValues(s.crystal, hops, barriers, siteE) },
   };
 }
