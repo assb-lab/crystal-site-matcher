@@ -255,9 +255,22 @@ export default function SitePanel(p: Props) {
         </div>
         <dl className="metrics">
           <div>
-            <dt>{t("site.dRange")}</dt>
+            <dt>{t("site.dMean")} ⟨d⟩</dt>
+            <dd className="mono">{a.cn ? `${fmt(a.dMean, 3)} Å` : "—"}</dd>
+          </div>
+          <div>
+            <dt>{t("site.dMax")} d<sub>max</sub></dt>
+            <dd className="mono">{a.cn ? `${fmt(a.dMax, 3)} Å` : "—"}</dd>
+          </div>
+          <div>
+            <dt>{t("site.dMin")} d<sub>min</sub></dt>
+            <dd className="mono">{a.cn ? `${fmt(a.dMin, 3)} Å` : "—"}</dd>
+          </div>
+          <div>
+            <dt>{t("site.offset")} |Δ<sub>c</sub>|</dt>
             <dd className="mono">
-              {fmt(a.dMin, 3)} – {fmt(a.dMax, 3)} Å
+              {a.centroidOffset === null ? "—" : `${a.centroidOffset.toFixed(3)} Å`}
+              {a.centroidOffset !== null && a.dMean > 0 && <span className="muted"> ({t("site.offsetOfMean", { p: `${((a.centroidOffset / a.dMean) * 100).toFixed(1)}%` })})</span>}
             </dd>
           </div>
           <div>
@@ -303,6 +316,7 @@ export default function SitePanel(p: Props) {
             </table>
           </div>
         )}
+        <p className="muted small">{t("site.offsetNote")}</p>
         <p className="muted small">{t("site.cshmNote")}</p>
       </section>
     </div>
@@ -459,9 +473,7 @@ function DistanceStrip({
           const col = rgbCss(elementColor(el));
           return (
             <circle key={i} cx={X(n.d)} cy={base - 2 - k * 11.5} r={4.6} fill={inc ? col : "var(--panel)"} stroke={inc ? "var(--ink)" : col} strokeWidth={inc ? 0.8 : 1.6}>
-              <title>
-                {crystal.positions[n.j].group} {n.d.toFixed(3)} Å
-              </title>
+              <title>{`${crystal.positions[n.j].group} ${n.d.toFixed(3)} Å`}</title>
             </circle>
           );
         })}

@@ -105,6 +105,8 @@ export interface SiteAnalysis {
   dMin: number;
   dMax: number;
   distortion: number; // Baur distortion index
+  /** Distance (Å) from the centre atom to the plain centroid of its ligand positions (off-centring); null below CN 2. */
+  centroidOffset: number | null;
   econ: number;
   volume: number | null;
   shapes: ShapeFit[];
@@ -200,6 +202,8 @@ export function analyzeSite(cr: Crystal, ox: Record<string, number>, bonds: Bond
   const dmin = elig.length ? elig[0].d : 0;
   const econ = econOf(elig.filter((n) => n.d < dmin * 1.6).map((n) => n.d));
   const verts = ligNb.map((n) => n.v);
+  // the vectors run from the centre to each ligand, so their mean is the centroid relative to the centre
+  const centroidOffset = cn >= 2 ? norm(verts.reduce((s, v) => [s[0] + v[0] / cn, s[1] + v[1] / cn, s[2] + v[2] / cn] as Vec3, [0, 0, 0] as Vec3)) : null;
   const volume = polyhedronVolume(verts);
   const shapes = cn >= 1 && cn <= 13 ? classifyShape(verts) : [];
 
@@ -240,6 +244,7 @@ export function analyzeSite(cr: Crystal, ox: Record<string, number>, bonds: Bond
     dMin: cn ? Math.min(...ds) : 0,
     dMax: cn ? Math.max(...ds) : 0,
     distortion,
+    centroidOffset,
     econ,
     volume,
     shapes,
