@@ -484,7 +484,7 @@ export const ja = {
   "side.include": "{name} を比較に含める",
   "side.nav": "開いている構造",
   "side.openAll": "すべて開く",
-  "side.samples": "サンプル…",
+  "side.samples": "サンプルを開く",
   "site.baur": "歪み指数",
   "site.bav": "結合角分散",
   "site.bvvs": "結合原子価ベクトル和",

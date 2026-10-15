@@ -486,7 +486,7 @@ export const en: Record<keyof typeof ja, string> = {
   "side.include": "Include {name} in the comparison",
   "side.nav": "Open structures",
   "side.openAll": "Open all",
-  "side.samples": "Samples…",
+  "side.samples": "Open sample",
   "site.baur": "Distortion index",
   "site.bav": "Bond-angle variance",
   "site.bvvs": "Bond valence vector sum",

@@ -1,7 +1,7 @@
 import type { Doc } from "../lib/doc";
-import { SAMPLES } from "../samples";
+import SampleMenu from "./SampleMenu";
 import { seriesColor } from "./charts";
-import { useT, type MsgKey } from "../i18n";
+import { useT } from "../i18n";
 
 interface Props {
   docs: Doc[];
@@ -57,24 +57,7 @@ export default function Sidebar(p: Props) {
         <button className="btn btn-primary btn-block" onClick={p.onOpen} id="side-open">
           ＋ CIF
         </button>
-        <select
-          className="side-sample"
-          value=""
-          onChange={(e) => {
-            if (e.target.value) p.onAddSample(e.target.value);
-            e.target.value = "";
-          }}
-          aria-label={t("side.addSample")}
-          id="side-sample"
-        >
-          <option value="">{t("side.samples")}</option>
-          <option value="__all">{t("side.openAll")}</option>
-          {SAMPLES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {t(`sample.${s.id}` as MsgKey)}
-            </option>
-          ))}
-        </select>
+        <SampleMenu onSelect={p.onAddSample} />
       </div>
     </nav>
   );

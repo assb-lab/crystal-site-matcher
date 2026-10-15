@@ -17,11 +17,11 @@ export interface Sample {
 }
 
 export const SAMPLES: Sample[] = [
+  { id: "LGPS", text: LGPS, site: "Ge1" },
   { id: "LiFePO4", text: LiFePO4, site: "Fe1" },
   { id: "LiCoO2", text: LiCoO2, site: "Co1" },
   { id: "Li3N", text: Li3N, site: "Li2" },
   { id: "AgI_alpha", text: AgI, site: "Ag1" },
-  { id: "LGPS", text: LGPS, site: "Ge1" },
   { id: "Li6PS5Cl", text: Argyrodite, site: "Li1" },
   { id: "YAG", text: YAG, site: "Y1" },
   { id: "spinel", text: Spinel, site: "Mg1" },
@@ -30,4 +30,4 @@ export const SAMPLES: Sample[] = [
 ];
 
 /** Opened at start-up so the sidebar and comparison have something to show. */
-export const STARTUP_SAMPLES = ["LiFePO4", "LiCoO2", "Li3N", "AgI_alpha"];
+export const STARTUP_SAMPLES = ["LGPS", "LiFePO4", "LiCoO2", "Li3N", "AgI_alpha"];
