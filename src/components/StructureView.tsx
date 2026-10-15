@@ -9,10 +9,9 @@ import ViewControls from "./ViewControls";
 import { Doc, createDoc, deriveBonds } from "../lib/doc";
 import { BondSettings, pairKey } from "../lib/bonding";
 import { analyzeSite } from "../lib/analysis";
-import { SceneExtras, ViewOptions, atomKey, buildScene, parseAtomKey } from "../lib/scene";
+import { SceneExtras, ViewOptions, atomKey, atomSectors, buildScene, parseAtomKey } from "../lib/scene";
 import { ionLabel } from "../lib/format";
 import type { FeatureEntry } from "../lib/useFeatures";
-import { atomSectors } from "../lib/scene";
 import { hopClasses } from "../lib/features";
 import { useT, type MsgKey } from "../i18n";
 

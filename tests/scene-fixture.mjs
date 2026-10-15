@@ -50,6 +50,14 @@ ${rows.map(([label, el, occ]) => `${label} ${el} 0.5 0.5 0.5 ${occ}`).join('\n')
     const rounded = make([['Li1', 'Li+', 0.99999999]]);
     assert.equal(sc.atomSectors(rounded.crystal, 0).length, 1);
     assert.equal(sc.atomSectors(rounded.crystal, 0)[0].fraction, 1);
+    // CIF rounding: three rows of 0.33 (total 0.99) or 0.995 on one row are a full site, normalised to 1
+    const thirds = sc.atomSectors(make([['Li1', 'Li+', 0.33], ['Na1', 'Na+', 0.33], ['K1', 'K+', 0.33]]).crystal, 0);
+    assert.deepEqual(thirds.map((s) => s.element), ['K', 'Li', 'Na']);
+    assert.ok(thirds.every((s) => Math.abs(s.fraction - 1 / 3) < 1e-12));
+    assert.equal(sc.atomSectors(make([['Li1', 'Li+', 0.995]]).crystal, 0).length, 1);
+    // a deficit beyond that rounding is a vacancy (0.98 on one row, 0.32 × 3 = 0.96)
+    assert.deepEqual(sc.atomSectors(make([['Li1', 'Li+', 0.98]]).crystal, 0).map((s) => s.element), ['Li', null]);
+    assert.ok(Math.abs(sc.atomSectors(make([['Li1', 'Li+', 0.32], ['Na1', 'Na+', 0.32], ['K1', 'K+', 0.32]]).crystal, 0).at(-1).fraction - 0.04) < 1e-12);
     const { bonds } = deriveBonds(doc.crystal, doc.ox, doc.bondSettings);
     const spec = sc.buildScene(doc.crystal, bonds, { ...doc.view, polyMode: 'none', supercell: [2, 1, 1] }, null);
     assert.equal(spec.atoms.length, 2);

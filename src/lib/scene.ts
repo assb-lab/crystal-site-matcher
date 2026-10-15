@@ -50,19 +50,28 @@ export interface AtomSector {
 }
 
 export const VACANCY_COLOR: Vec3 = [255, 255, 255];
+/**
+ * Rounding allowed per CIF occupancy row: values written with two decimals are off by at most 0.005, so
+ * three rows of 0.33 (total 0.99) are a full site, not a 1 % vacancy. Larger deficits are drawn as vacancy.
+ */
+export const OCC_ROUNDING = 0.005;
 
 /** Aggregate chemical species at a position, retaining the unoccupied fraction. */
 export function atomSectors(cr: Crystal, pos: number): AtomSector[] {
   const weights = new Map<string, number>();
+  let rows = 0;
   for (const o of cr.positions[pos].occupants) {
     if (!(o.occ > 0) || !Number.isFinite(o.occ)) continue;
     const el = cr.sites[o.site].element;
     weights.set(el, (weights.get(el) ?? 0) + o.occ);
+    rows++;
   }
   const total = [...weights.values()].reduce((a, b) => a + b, 0);
-  const denominator = total > 1 || Math.abs(total - 1) < 1e-6 ? total : 1;
+  // full within the rounding of the CIF values (or over-full): normalise the display to 1
+  const full = total >= 1 - OCC_ROUNDING * Math.max(rows, 1);
+  const denominator = full ? total : 1;
   const sectors: AtomSector[] = [...weights].sort(([a], [b]) => a.localeCompare(b)).map(([element, w]) => ({ element, fraction: w / denominator, color: elementColor(element) }));
-  if (total < 1 - 1e-6) sectors.push({ element: null, fraction: 1 - total, color: VACANCY_COLOR });
+  if (!full) sectors.push({ element: null, fraction: 1 - total, color: VACANCY_COLOR });
   return sectors;
 }
 
