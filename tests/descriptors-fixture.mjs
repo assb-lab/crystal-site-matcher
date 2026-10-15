@@ -112,6 +112,19 @@ F1 F1- 0.5 0.5 0.5 0.5
   near(t.radiusDisorder_frame, 0.0225 / 0.6675, 1e-6, 'cation size spread');
   near(t.radiusDisorder_anion, 0.035 / 1.365, 1e-6, 'anion size spread');
   near(t.ionPot_anion, 0.5 * (2 / 1.4) + 0.5 * (1 / 1.33), 1e-9, 'mixed-site ionic potential');
+  // Splitting an occupant into duplicate CIF rows must not create chemical mixing.
+  const duplicate = toy.replace('O1 O2- 0.5 0.5 0.5 0.5', 'O1 O2- 0.5 0.5 0.5 0.2\nO2 O2- 0.5 0.5 0.5 0.3');
+  const dup = await x.extractFromText(duplicate, 'split.cif', { grid: null, mobile: null });
+  assert.deepEqual(dup.errors, []);
+  for (const k of ['mixEntropy_anion', 'radiusDisorder_anion', 'chargeDisorder_anion']) near(dup.records[0].values[k], t[k], 1e-9, `split O/F: ${k}`);
+  const pure = duplicate.replace('F1 F1- 0.5 0.5 0.5 0.5', 'O3 O2- 0.5 0.5 0.5 0.5');
+  const ordered = await x.extractFromText(pure, 'pure.cif', { grid: null, mobile: null });
+  assert.deepEqual(ordered.errors, []);
+  near(ordered.records[0].values.mixEntropy_anion, 0, 1e-9, 'identical O rows are not mixing');
+  const { mixing } = await server.ssrLoadModule('/src/lib/descriptors.ts');
+  const redox = mixing([{ el: 'Fe', x: 0.5, r: 0.78, q: 2 }, { el: 'Fe', x: 0.5, r: 0.645, q: 3 }]);
+  near(redox.entropy, 0, 1e-9, 'entropy uses element fractions');
+  near(redox.charge, 0.5, 1e-9, 'charge spread still uses oxidation states');
   // ordered samples: no mixing
   for (const k of ['mixEntropy_frame', 'mixEntropy_anion', 'radiusDisorder_frame', 'chargeDisorder_anion']) assert.equal(lco[k], 0, k);
 } finally {

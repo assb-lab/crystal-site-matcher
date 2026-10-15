@@ -30,14 +30,18 @@ export const isTet = (a: SiteAnalysis) => a.cn === 4 && a.shapes[0]?.sym === "T:
 export const isOct = (a: SiteAnalysis) => a.cn === 6 && a.shapes[0]?.sym === "O:6";
 
 /** Configurational entropy (k_B), size and charge spread of the species sharing one site. */
-export function mixing(species: { x: number; r: number; q: number }[]) {
+export function mixing(species: { el: string; x: number; r: number; q: number }[]) {
   const W = species.reduce((s, x) => s + x.x, 0);
   if (W <= 0) return { entropy: 0, radius: 0, charge: 0 };
   const xs = species.map((s) => ({ ...s, x: s.x / W }));
+  // CIF rows may split the same element over several labels at one position.
+  // Entropy counts chemical alternatives, while size/charge spreads retain their own weights.
+  const elements = new Map<string, number>();
+  for (const s of xs) elements.set(s.el, (elements.get(s.el) ?? 0) + s.x);
   const rBar = xs.reduce((s, x) => s + x.x * x.r, 0);
   const qBar = xs.reduce((s, x) => s + x.x * x.q, 0);
   return {
-    entropy: -xs.reduce((s, x) => s + (x.x > 0 ? x.x * Math.log(x.x) : 0), 0),
+    entropy: -[...elements.values()].reduce((s, x) => s + (x > 0 ? x * Math.log(x) : 0), 0),
     radius: rBar > 0 ? Math.sqrt(xs.reduce((s, x) => s + x.x * (1 - x.r / rBar) ** 2, 0)) : 0,
     charge: Math.sqrt(xs.reduce((s, x) => s + x.x * (x.q - qBar) ** 2, 0)),
   };
@@ -136,7 +140,7 @@ export function computeDescriptors(
 
   // ---------------- mixed sites (ideal mixing from the average-structure occupancies) ----------------
   const mixOf = (pos: number, test: (site: number) => boolean) =>
-    mixing(P[pos].occupants.filter((o) => test(o.site)).map((o) => ({ x: o.occ, r: radius(pos, o.site), q: qOf(o.site) })));
+    mixing(P[pos].occupants.filter((o) => test(o.site)).map((o) => ({ el: elOf(o.site), x: o.occ, r: radius(pos, o.site), q: qOf(o.site) })));
   const fMix = frames.map((x) => ({ m: mixOf(x.pos, isFrameCation), w: x.mult }));
   const aMix = anions.map((x) => ({ m: mixOf(x.pos, (s) => qOf(s) < 0), w: x.mult }));
   const avg = (xs: { m: ReturnType<typeof mixing>; w: number }[], k: "entropy" | "radius" | "charge") => wstats(xs.map((x) => ({ v: x.m[k], w: x.w }))).mean;
