@@ -30,6 +30,16 @@ export interface HopRecord {
   neckFrac: Vec3; // point of the bottleneck on the straight path
 }
 
+/** A stable site of the mobile ion on the BVSE landscape (only with the grid). */
+export interface SiteRecord {
+  kind: "site" | "interstitial"; // at a CIF mobile-ion position, or an empty candidate
+  E: number; // eV above the grid minimum
+  frac: Vec3;
+  nearest: string; // closest CIF mobile-ion site group
+  dNearest: number; // Å
+  curvature: Vec3; // Hessian eigenvalues (eV/Å²), ascending
+}
+
 export interface StructureRecord {
   file: string;
   block: string;
@@ -39,6 +49,7 @@ export interface StructureRecord {
   ox: Record<string, number>;
   values: Record<string, FeatureValue>;
   hops: HopRecord[];
+  sites: SiteRecord[];
 }
 
 export interface ExtractError {
@@ -81,9 +92,12 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
       const st = staticStage(s, hopCutoff);
       const values: Record<string, FeatureValue> = { ...st.values };
       for (const k of GRID_KEYS) values[k] ??= null;
+      const sites: SiteRecord[] = [];
       if (grid !== null && hasMobile(s)) {
         const g = await gridStage(s, grid);
         if (g) Object.assign(values, g.values);
+        for (const m of g?.minima ?? [])
+          sites.push({ kind: m.occupied ? "site" : "interstitial", E: m.E, frac: m.frac, nearest: m.nearest?.group ?? "", dNearest: m.nearest?.d ?? NaN, curvature: m.curvature });
       }
       const L = s.crystal.lattice;
       const P = s.crystal.positions;
@@ -98,7 +112,7 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
           neckFrac: toFrac(L, h.mid),
         }))
         .sort((x, y) => x.d - y.d || x.rb - y.rb);
-      out.records.push({ file, block: block.name, formula: s.formula, mobile: hasMobile(s) ? s.mobile : null, oxGuessed: s.oxGuessed, ox: s.ox, values, hops });
+      out.records.push({ file, block: block.name, formula: s.formula, mobile: hasMobile(s) ? s.mobile : null, oxGuessed: s.oxGuessed, ox: s.ox, values, hops, sites });
     } catch (e) {
       out.errors.push({ file, block: block.name, message: tError(tEn, e) });
     }
@@ -147,6 +161,15 @@ export function hopRows(records: StructureRecord[]): string[][] {
   return rows;
 }
 
+export const SITE_COLUMNS = ["file", "block", "mobile", "kind", "E", "x", "y", "z", "nearest", "d_nearest", "curv_1", "curv_2", "curv_3"];
+
+export function siteRows(records: StructureRecord[]): string[][] {
+  const rows = [SITE_COLUMNS];
+  for (const r of records)
+    for (const s of r.sites) rows.push([r.file, r.block, r.mobile ?? "", s.kind, num(s.E), ...s.frac.map(coord), s.nearest, num(s.dNearest), ...s.curvature.map(num)]);
+  return rows;
+}
+
 export function delimited(rows: string[][], sep: "," | "\t"): string {
   const esc =
     sep === ","
@@ -161,6 +184,7 @@ export interface JsonSettings {
   hopCutoff: number;
   grid: number | null;
   hops: boolean;
+  sites?: boolean;
 }
 
 const round = (v: number) => +num(v);
@@ -186,6 +210,9 @@ export function toJson(result: ExtractResult, settings: JsonSettings): string {
         }),
       ),
       ...(settings.hops && r.mobile ? { hops: r.hops.map((h) => ({ from: h.from, to: h.to, d: round(h.d), rb: round(h.rb), fromFrac: roundVec(h.fromFrac), toFrac: roundVec(h.toFrac), neckFrac: roundVec(h.neckFrac) })) } : {}),
+      ...(settings.sites !== false && r.sites.length
+        ? { sites: r.sites.map((s) => ({ kind: s.kind, E: round(s.E), frac: roundVec(s.frac), nearest: s.nearest, dNearest: round(s.dNearest), curvature: s.curvature.map(round) })) }
+        : {}),
     })),
     errors: result.errors,
   };

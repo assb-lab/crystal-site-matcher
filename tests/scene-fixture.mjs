@@ -86,6 +86,12 @@ try {
       // colour follows the shared bottleneck scale (widest class → green end)
       assert.deepEqual(spec.hopPath.color, sc.hopColor(cls.rb, 0, 0.646));
     }
+    // stable-site markers (#26): boundary images like atoms (a corner site appears at all 8 corners)
+    const mk = sc.buildScene(doc.crystal, bonds, doc.view, null, { minima: [{ frac: [0, 0, 0], occupied: false }, { frac: [0.5, 0.5, 0.5], occupied: true }] });
+    assert.equal(mk.minima.filter((m) => !m.occupied).length, 8);
+    assert.equal(mk.minima.filter((m) => m.occupied).length, 1);
+    assert.equal(sc.buildScene(doc.crystal, bonds, { ...doc.view, supercell: [2, 1, 1] }, null, { minima: [{ frac: [0.5, 0.5, 0.5], occupied: true }] }).minima.length, 2);
+    assert.deepEqual(sc.buildScene(doc.crystal, bonds, doc.view, null, {}).minima, []);
     // nothing selected → no path
     assert.equal(sc.buildScene(doc.crystal, bonds, doc.view, null, {}).hopPath, null);
     // hidden mobile ions are not added back as path ends

@@ -135,6 +135,13 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "R_2D", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "R_3D", unit: "Å", digits: 3, group: "grid", async: true },
   { key: "maxVoid", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "n_interstitial", digits: 0, group: "grid", async: true },
+  { key: "rho_interstitial", unit: "nm⁻³", digits: 2, group: "grid", async: true },
+  { key: "E_interstitial_min", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "site_spacing", unit: "Å", digits: 3, group: "grid", async: true },
+  { key: "site_energy_spread", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "curv_min", unit: "eV/Å²", digits: 2, group: "grid", async: true },
+  { key: "curv_aniso", digits: 2, group: "grid", async: true },
 ];
 
 export const FEATURE_BY_KEY = Object.fromEntries(FEATURE_DEFS.map((f) => [f.key, f])) as Record<string, FeatureDef>;
