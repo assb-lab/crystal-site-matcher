@@ -35,7 +35,10 @@ export function simulateXrd(cr: Crystal, opts: { wavelength?: number; tthMin?: n
     fwhm = opts.fwhm ?? 0.12;
   const inv = cr.lattice.inv; // rows = reciprocal vectors (no 2π)
   const sMax = (2 * Math.sin(((tthMax / 2) * Math.PI) / 180)) / lam; // 1/d max
-  const hmax = [0, 1, 2].map((i) => Math.ceil(sMax / cr.lattice.recip[i]) + 1);
+  // h = G·A, so |G| ≤ sMax bounds |h| by sMax·a (likewise k, l); unlike sMax/|a*| this holds in oblique cells,
+  // where large indices can still give a short G
+  const L = cr.lattice;
+  const hmax = [L.a, L.b, L.c].map((len) => Math.floor(sMax * len + 1e-9));
   const atoms = cr.positions.flatMap((p) => p.occupants.map((o) => ({ f: p.frac, el: cr.sites[o.site].element, occ: o.occ })));
   const fCache = new Map<string, number>();
   const fAt = (el: string, s: number) => {
