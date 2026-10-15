@@ -7,6 +7,7 @@ import { FrameworkField, GridResult, computeGrid } from "./bvse";
 import { Crystal, crystalFromCif, formulaString, guessOxidationStates } from "./structure";
 import { EnergyMinimum, findMinima, minimaFeatureValues } from "./landscape";
 import { HopBarrier, hopBarrierFeatureValues, hopBarriers } from "./hopBarriers";
+import { diffusionFeatureValues } from "./diffusion";
 import type { Hop } from "./features";
 
 export const DEFAULT_HOP_CUTOFF = 4.0; // Å
@@ -115,6 +116,6 @@ export async function gridStage(
     siteE,
     minima,
     barriers,
-    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima, s.mobile), ...hopBarrierFeatureValues(s.crystal, hops, barriers, s.mobile) },
+    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima, s.mobile), ...hopBarrierFeatureValues(s.crystal, hops, barriers, s.mobile), ...diffusionFeatureValues(s.crystal, hops, barriers, siteE) },
   };
 }

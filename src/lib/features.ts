@@ -173,6 +173,13 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: "hop_bypass_dim", digits: 0, group: "grid", async: true },
   { key: "E_hop_bypass", unit: "eV", digits: 3, group: "grid", async: true },
   { key: "dE_hop_bypass", unit: "eV", digits: 3, group: "grid", async: true },
+  { key: "logD", unit: "log10(cm²/s)", digits: 2, group: "grid", async: true },
+  { key: "logD_a", unit: "log10(cm²/s)", digits: 2, group: "grid", async: true },
+  { key: "logD_b", unit: "log10(cm²/s)", digits: 2, group: "grid", async: true },
+  { key: "logD_c", unit: "log10(cm²/s)", digits: 2, group: "grid", async: true },
+  { key: "D_dim", digits: 0, group: "grid", async: true },
+  { key: "logD_aniso", digits: 2, group: "grid", async: true },
+  { key: "Ea_D", unit: "eV", digits: 3, group: "grid", async: true },
 ];
 
 export const FEATURE_BY_KEY = Object.fromEntries(FEATURE_DEFS.map((f) => [f.key, f])) as Record<string, FeatureDef>;
