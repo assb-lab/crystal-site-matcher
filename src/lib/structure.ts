@@ -62,6 +62,8 @@ export interface Crystal {
   lattice: Lattice;
   spaceGroup: { symbol: string; number: number | null; source: SgSource };
   nOps: number;
+  /** Symmetry operations used for the expansion (absent in hand-built crystals). */
+  ops?: SymOp[];
   sites: AsymSite[];
   positions: Position[];
   groups: SiteGroup[];
@@ -138,6 +140,11 @@ export function toCart(L: Lattice, f: Vec3): Vec3 {
     f[0] * L.A[1] + f[1] * L.B[1] + f[2] * L.C[1],
     f[0] * L.A[2] + f[1] * L.B[2] + f[2] * L.C[2],
   ];
+}
+
+export function toFrac(L: Lattice, c: Vec3): Vec3 {
+  const m = L.inv;
+  return [0, 1, 2].map((i) => m[i][0] * c[0] + m[i][1] * c[1] + m[i][2] * c[2]) as Vec3;
 }
 
 const wrap = (x: number) => {
@@ -406,6 +413,7 @@ export function crystalFromCif(block: CifBlock): Crystal {
     lattice,
     spaceGroup: { symbol: sgSymbol.trim() || "?", number: sgNumber, source },
     nOps: ops.length,
+    ops,
     sites,
     positions,
     groups,

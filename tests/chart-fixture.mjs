@@ -66,7 +66,7 @@ try {
     const [cls] = hopClasses(doc.crystal, st.hops);
     assert.equal((html.match(/role="button"/g) ?? []).length, 1);
     assert.match(html, /aria-pressed="false"/);
-    assert.match(html, /<td[^>]*><span class="dot"[^>]*><\/span>Li1 → Li1<\/td><td class="num mono">2\.816<\/td><td class="num mono">0\.148<\/td><td class="num mono">9<\/td>/);
+    assert.match(html, /<td[^>]*><span class="dot"[^>]*><\/span>Li1 → Li1<\/td><td class="num mono">2\.816<\/td><td class="num mono">0\.338<\/td><td class="num mono">9<\/td>/);
     const picked = renderToStaticMarkup(createElement(I18nProvider, { initial: 'ja' }, createElement(FeaturesPanel, { ...props, doc: { ...doc, hopSel: cls.key } })));
     assert.match(picked, /aria-pressed="true"/);
     assert.match(picked, /class="clickable is-selected"/);

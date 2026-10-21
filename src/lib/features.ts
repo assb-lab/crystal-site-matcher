@@ -8,7 +8,8 @@ import { computeDescriptors } from "./descriptors";
 import { cshm } from "./shape";
 import { FrameworkField } from "./bvse";
 import { PeriodicUnionFind } from "./percolation";
-import { Crystal, Neighbor, Vec3, add, formulaString, toCart } from "./structure";
+import { Crystal, Neighbor, Position, Vec3, add, formulaString, toCart, toFrac } from "./structure";
+import type { SymOp } from "./spacegroup";
 
 export type FeatureValue = number | string | null;
 
@@ -215,8 +216,9 @@ export interface Hop {
   b: number;
   t: Vec3; // translation of b
   d: number;
-  rb: number; // bottleneck radius (Å, ≥ 0): free radius along the straight path
+  rb: number; // bottleneck radius (Å, ≥ 0): free radius along the widest path with one bend (#62)
   mid: Vec3; // Cartesian point of the bottleneck
+  via: Vec3; // Cartesian bend point of the path (the midpoint when the straight line is widest)
 }
 
 /** Geometric display groups: same site groups, distance and bottleneck radius; not a symmetry test. */
@@ -309,6 +311,58 @@ const HCP = IDEAL_POLYHEDRA.find((p) => p.sym === "AC:12")!;
  * framework ion's radius from the ion centre, i.e. through the ion rather than through a window.
  */
 export const HOP_CORE_BLOCK = 0.5;
+
+/**
+ * Bent path of every hop, searched for one hop of each symmetry orbit and mapped onto the others by the
+ * crystal's symmetry operations. A hop whose image is not found (no operations, or positions merged
+ * within the expansion tolerance) gets its own search.
+ */
+function hopPathsBySymmetry<H extends { a: number; b: number; t: Vec3 }>(
+  cr: Crystal,
+  hops: H[],
+  mobilePos: Position[],
+  search: (h: H) => { clearance: number; at: Vec3; via: Vec3 },
+): { clearance: number; at: Vec3; via: Vec3 }[] {
+  const L = cr.lattice;
+  const index = new Map(hops.map((h, i) => [`${h.a}|${h.b}|${h.t.join(",")}`, i]));
+  // mobile position at a fractional point, and the lattice translation from its home-cell copy
+  const locate = (f: Vec3): [number, Vec3] | null => {
+    for (const q of mobilePos) {
+      const n = f.map((x, k) => Math.round(x - q.frac[k])) as Vec3;
+      const r = toCart(L, f.map((x, k) => x - q.frac[k] - n[k]) as Vec3);
+      if (Math.hypot(r[0], r[1], r[2]) < 0.05) return [q.index, n];
+    }
+    return null;
+  };
+  const apply = (op: SymOp, f: Vec3): Vec3 => [0, 1, 2].map((i) => op.R[i][0] * f[0] + op.R[i][1] * f[1] + op.R[i][2] * f[2] + op.t[i]) as Vec3;
+  const out: ({ clearance: number; at: Vec3; via: Vec3 } | undefined)[] = hops.map(() => undefined);
+  hops.forEach((h, i) => {
+    if (out[i]) return;
+    const res = search(h);
+    out[i] = res;
+    const fa = cr.positions[h.a].frac,
+      fb = add(cr.positions[h.b].frac, h.t);
+    const at = toFrac(L, res.at),
+      via = toFrac(L, res.via);
+    for (const op of cr.ops ?? []) {
+      const ia = locate(apply(op, fa)),
+        ib = locate(apply(op, fb));
+      if (!ia || !ib) continue;
+      const tAB = ib[1].map((x, k) => x - ia[1][k]);
+      // the image as stored: forward from a′, or reversed from b′
+      let j = index.get(`${ia[0]}|${ib[0]}|${tAB.join(",")}`),
+        home = ia[1];
+      if (j === undefined) {
+        j = index.get(`${ib[0]}|${ia[0]}|${tAB.map((x) => -x).join(",")}`);
+        home = ib[1];
+      }
+      if (j === undefined || out[j]) continue;
+      const map = (f: Vec3) => toCart(L, apply(op, f).map((x, k) => x - home[k]) as Vec3);
+      out[j] = { clearance: res.clearance, at: map(at), via: map(via) };
+    }
+  });
+  return out as { clearance: number; at: Vec3; via: Vec3 }[];
+}
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
@@ -522,6 +576,8 @@ export function computeStaticFeatures(
   if (mobileEl && mobilePos.length) {
     const field = new FrameworkField(cr, ox, mobileEl, radius, 6);
     const mSet = new Set(mobilePos.map((p) => p.index));
+    type Cand = { a: number; b: number; t: Vec3; d: number; A: Vec3; B: Vec3 };
+    const cands: Cand[] = [];
     for (const p of mobilePos)
       for (const n of table[p.index]) {
         if (n.d > opts.hopCutoff) break;
@@ -531,12 +587,15 @@ export function computeStaticFeatures(
         const rev = `${n.j}|${p.index}|${n.t.map((x) => -x).join(",")}`;
         if (p.index > n.j || (p.index === n.j && key > rev)) continue;
         const A = p.cart;
-        const seg = field.segment(A, [A[0] + n.v[0], A[1] + n.v[1], A[2] + n.v[2]]);
+        const B: Vec3 = [A[0] + n.v[0], A[1] + n.v[1], A[2] + n.v[2]];
         // The straight line runs through a framework ion (e.g. Li–N–Li, O–Ti–O): not a direct hop.
-        if (seg.core < HOP_CORE_BLOCK) continue;
-        // Narrower than the Shannon spheres: no free radius left on the straight path.
-        hops.push({ a: p.index, b: n.j, t: n.t, d: n.d, rb: Math.max(0, seg.clearance), mid: seg.at });
+        if (field.segment(A, B).core < HOP_CORE_BLOCK) continue;
+        cands.push({ a: p.index, b: n.j, t: n.t, d: n.d, A, B });
       }
+    // The path bends around framework ions; rb is 0 when even that path is narrower than the Shannon spheres.
+    // It is searched once per symmetry orbit of hops and mapped onto the others, so equivalent hops agree exactly.
+    const paths = hopPathsBySymmetry(cr, cands, mobilePos, (c) => field.bentPath(c.A, c.B));
+    cands.forEach((c, i) => hops.push({ a: c.a, b: c.b, t: c.t, d: c.d, rb: Math.max(0, paths[i].clearance), mid: paths[i].at, via: paths[i].via }));
     const deg = new Map<number, number>();
     for (const h of hops) {
       deg.set(h.a, (deg.get(h.a) ?? 0) + 1);

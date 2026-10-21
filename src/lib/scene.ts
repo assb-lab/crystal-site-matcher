@@ -127,7 +127,7 @@ export interface SceneSpec {
 
 /** The selected class of hops, drawn as a moving dashed line between its two mobile-ion sites. */
 export interface HopPathSpec {
-  segs: [Vec3, Vec3][];
+  paths: Vec3[][]; // polyline per hop and cell: start site, bend point (if any), end site
   necks: Vec3[]; // bottleneck points
   saddles: Vec3[]; // BVSE saddle points (when the grid has been computed)
   color: [number, number, number]; // bottleneck colour of the class
@@ -148,6 +148,7 @@ export interface SceneHop {
   t: Vec3;
   rb: number;
   mid: Vec3; // Cartesian bottleneck point of the hop that starts in the home cell
+  via?: Vec3; // Cartesian bend point of the same hop (#62)
   saddle?: Vec3; // Cartesian BVSE saddle point of the same hop
 }
 
@@ -176,6 +177,14 @@ export const MINIMUM_SITE_COLOR: [number, number, number] = [128, 136, 150];
 /** Colour of a hop with bottleneck radius `rb` on the scale [lo, hi] (the same in the 3D view and the charts). */
 export function hopColor(rb: number, lo: number, hi: number): [number, number, number] {
   return ramp(hi > lo ? (rb - lo) / (hi - lo) : 1);
+}
+
+/** Distance from P to the segment A–B. */
+function distToSegment(P: Vec3, A: Vec3, B: Vec3): number {
+  const ab = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+  const ap = [P[0] - A[0], P[1] - A[1], P[2] - A[2]];
+  const t = Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / (ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1e-12)));
+  return Math.hypot(ap[0] - t * ab[0], ap[1] - t * ab[1], ap[2] - t * ab[2]);
 }
 
 function ramp(t: number): [number, number, number] {
@@ -369,13 +378,18 @@ export function buildScene(
 
   let hopPath: HopPathSpec | null = null;
   if (selHops.length) {
-    hopPath = { segs: [], necks: [], saddles: [], color: hopColor(selHops[0].rb, lo, hi) };
+    hopPath = { paths: [], necks: [], saddles: [], color: hopColor(selHops[0].rb, lo, hi) };
     for (const h of selHops)
       for (const c of cells) {
         const fa = cr.positions[h.a].frac,
           fb = cr.positions[h.b].frac;
         const shift = toCart(L, c);
-        hopPath.segs.push([toCart(L, add(fa, c)), toCart(L, add(add(fb, h.t), c))]);
+        const A = toCart(L, add(fa, c)),
+          B = toCart(L, add(add(fb, h.t), c));
+        // the bend is drawn only when it leaves the straight line
+        const P = h.via ? add(h.via, shift) : null;
+        const off = P ? distToSegment(P, A, B) : 0;
+        hopPath.paths.push(P && off > 1e-6 ? [A, P, B] : [A, B]);
         hopPath.necks.push(add(h.mid, shift));
         if (h.saddle) hopPath.saddles.push(add(h.saddle, shift));
       }

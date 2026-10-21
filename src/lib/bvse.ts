@@ -158,6 +158,62 @@ export class FrameworkField {
     return { clearance, at, core };
   }
 
+  /**
+   * Widest path from A to B with one bend (#62): the bend point P maximises
+   * min(clearance(A→P), clearance(P→B)) inside the sphere with diameter AB, so the path is at most √2·|AB|
+   * long and stays local to the hop. P = midpoint is the straight line, so the result is never narrower.
+   * Starting points are the midpoint and the best few points of a 0.25 Å grid (at least 0.5 Å apart); each is refined by
+   * ε-steepest ascent of the max–min problem (see `ascend`). The clearance of each leg is exact.
+   * - clearance: free radius of the path (negative when every such path enters an ion sphere).
+   * - at: point of the path where the clearance is smallest.
+   * - via: the bend point.
+   */
+  bentPath(A: Vec3, B: Vec3): { clearance: number; at: Vec3; via: Vec3 } {
+    const M: Vec3 = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2];
+    const R = Math.hypot(B[0] - A[0], B[1] - A[1], B[2] - A[2]) / 2;
+    // Every path starts at A and ends at B, so the result is at most the clearance of the two ends. Ions
+    // farther than that from every point of the sphere cannot limit the path.
+    let rMax = 0;
+    for (const ion of this.ions) if (ion.r > rMax) rMax = ion.r;
+    const cap = Math.max(0, Math.min(this.segment(A, A).clearance, this.segment(B, B).clearance)) + 1e-6;
+    const near: FieldIon[] = [];
+    const lo = (i: number) => Math.floor((M[i] - R - cap - rMax) / this.binSize);
+    const hi = (i: number) => Math.floor((M[i] + R + cap + rMax) / this.binSize);
+    for (let i = lo(0); i <= hi(0); i++)
+      for (let j = lo(1); j <= hi(1); j++)
+        for (let k = lo(2); k <= hi(2); k++)
+          for (const idx of this.bins.get(`${i},${j},${k}`) ?? []) {
+            const ion = this.ions[idx];
+            if (Math.hypot(ion.x - M[0], ion.y - M[1], ion.z - M[2]) - ion.r - R <= cap) near.push(ion);
+          }
+    const path = new BentPath(A, B, M, R, near);
+    const STEP = 0.25;
+    const n = Math.floor(R / STEP);
+    const grid: { P: Vec3; v: number }[] = [{ P: M, v: path.value(M) }];
+    for (let i = -n; i <= n; i++)
+      for (let j = -n; j <= n; j++)
+        for (let k = -n; k <= n; k++) {
+          if (!i && !j && !k) continue;
+          const P: Vec3 = [M[0] + i * STEP, M[1] + j * STEP, M[2] + k * STEP];
+          if (path.inside(P)) grid.push({ P, v: path.value(P) });
+        }
+    grid.sort((x, y) => y.v - x.v);
+    // the straight line is always refined; equivalent hops then agree even when the grid falls differently
+    const starts: Vec3[] = [M];
+    for (const g of grid) {
+      if (starts.length >= 5) break;
+      if (starts.every((s) => Math.hypot(s[0] - g.P[0], s[1] - g.P[1], s[2] - g.P[2]) >= 0.5)) starts.push(g.P);
+    }
+    let best = { P: M, v: grid.find((g) => g.P === M)!.v };
+    for (const s of starts) {
+      const r = path.ascend(s);
+      if (r.v > best.v + 1e-12) best = r;
+    }
+    const [c1, at1] = path.leg(A, best.P);
+    const [c2, at2] = path.leg(best.P, B);
+    return { clearance: Math.min(c1, c2), at: c1 <= c2 ? at1 : at2, via: best.P };
+  }
+
   /** Returns [energy (eV), void distance (Å)] at a Cartesian point. */
   eval(x: number, y: number, z: number): [number, number] {
     const bx = Math.floor(x / this.binSize),
@@ -358,4 +414,171 @@ export async function computeGrid(
     }
   }
   return { n, resolution: res, energy, voids, eMinAbs, E, R, Eaxis, Raxis, conn, maxVoid, energyCurve, voidCurve, setup: field.setup };
+}
+
+/** Min-norm point of the convex hull of a few 3D vectors, by enumerating its faces (exact). */
+function minNormPoint(V: Vec3[]): Vec3 {
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  let best: Vec3 = V[0],
+    bn = dot(V[0], V[0]);
+  const consider = (p: Vec3) => {
+    const pn = dot(p, p);
+    if (pn < bn) {
+      best = p;
+      bn = pn;
+    }
+  };
+  const k = V.length;
+  for (let i = 0; i < k; i++) consider(V[i]);
+  // edges
+  for (let i = 0; i < k; i++)
+    for (let j = i + 1; j < k; j++) {
+      const e = sub(V[j], V[i]);
+      const ee = dot(e, e);
+      if (ee < 1e-24) continue;
+      const t = -dot(V[i], e) / ee;
+      if (t > 0 && t < 1) consider([V[i][0] + t * e[0], V[i][1] + t * e[1], V[i][2] + t * e[2]]);
+    }
+  // triangles: projection of the origin onto the plane, kept when it falls inside
+  for (let i = 0; i < k; i++)
+    for (let j = i + 1; j < k; j++)
+      for (let l = j + 1; l < k; l++) {
+        const e1 = sub(V[j], V[i]),
+          e2 = sub(V[l], V[i]);
+        const a = dot(e1, e1),
+          b = dot(e1, e2),
+          c = dot(e2, e2);
+        const det = a * c - b * b;
+        if (det < 1e-24) continue;
+        const r1 = -dot(V[i], e1),
+          r2 = -dot(V[i], e2);
+        const u = (c * r1 - b * r2) / det,
+          w = (a * r2 - b * r1) / det;
+        if (u > 0 && w > 0 && u + w < 1) consider([V[i][0] + u * e1[0] + w * e2[0], V[i][1] + u * e1[1] + w * e2[1], V[i][2] + u * e1[2] + w * e2[2]]);
+      }
+  // tetrahedra containing the origin
+  for (let i = 0; i < k && bn > 0; i++)
+    for (let j = i + 1; j < k; j++)
+      for (let l = j + 1; l < k; l++)
+        for (let m = l + 1; m < k; m++) {
+          const e1 = sub(V[j], V[i]),
+            e2 = sub(V[l], V[i]),
+            e3 = sub(V[m], V[i]);
+          const det = e1[0] * (e2[1] * e3[2] - e2[2] * e3[1]) - e1[1] * (e2[0] * e3[2] - e2[2] * e3[0]) + e1[2] * (e2[0] * e3[1] - e2[1] * e3[0]);
+          if (Math.abs(det) < 1e-24) continue;
+          // Cramer's rule for e1·u + e2·v + e3·w = −V[i]
+          const r: Vec3 = [-V[i][0], -V[i][1], -V[i][2]];
+          const d3 = (x: Vec3, y: Vec3, z: Vec3) => x[0] * (y[1] * z[2] - y[2] * z[1]) - x[1] * (y[0] * z[2] - y[2] * z[0]) + x[2] * (y[0] * z[1] - y[1] * z[0]);
+          const u = d3(r, e2, e3) / det,
+            v = d3(e1, r, e3) / det,
+            w = d3(e1, e2, r) / det;
+          if (u >= 0 && v >= 0 && w >= 0 && u + v + w <= 1) return [0, 0, 0];
+        }
+  return best;
+}
+
+/** The max–min problem of `FrameworkField.bentPath` for one hop: clearance of A→P→B over the nearby ions. */
+class BentPath {
+  constructor(
+    private A: Vec3,
+    private B: Vec3,
+    private M: Vec3,
+    private R: number,
+    private near: FieldIon[],
+  ) {}
+
+  inside(P: Vec3): boolean {
+    return Math.hypot(P[0] - this.M[0], P[1] - this.M[1], P[2] - this.M[2]) <= this.R + 1e-12;
+  }
+
+  /** Clearance of the leg P→Q and its narrowest point. */
+  leg(P: Vec3, Q: Vec3): [number, Vec3] {
+    const d0 = Q[0] - P[0],
+      d1 = Q[1] - P[1],
+      d2 = Q[2] - P[2];
+    const L2 = d0 * d0 + d1 * d1 + d2 * d2 || 1e-12;
+    let c = Infinity,
+      at: Vec3 = P;
+    for (const ion of this.near) {
+      const t = Math.max(0, Math.min(1, ((ion.x - P[0]) * d0 + (ion.y - P[1]) * d1 + (ion.z - P[2]) * d2) / L2));
+      const x = P[0] + d0 * t,
+        y = P[1] + d1 * t,
+        z = P[2] + d2 * t;
+      const v = Math.hypot(ion.x - x, ion.y - y, ion.z - z) - ion.r;
+      if (v < c) {
+        c = v;
+        at = [x, y, z];
+      }
+    }
+    return [c, at];
+  }
+
+  value(P: Vec3): number {
+    return Math.min(this.leg(this.A, P)[0], this.leg(P, this.B)[0]);
+  }
+
+  /**
+   * Clearance of every (ion, leg) pair and its gradient with respect to the bend point P. On a leg the
+   * closest point is X = A + t(P − A) (or P + t(B − P)); by the envelope theorem ∂|C − X|/∂P is
+   * −t(C − X)/|C − X| (or −(1 − t)(C − X)/|C − X|), zero when the closest point is the fixed end.
+   */
+  private terms(P: Vec3): { f: number; g: Vec3 }[] {
+    const out: { f: number; g: Vec3 }[] = [];
+    for (const [S, E, first] of [
+      [this.A, P, true],
+      [P, this.B, false],
+    ] as const) {
+      const d0 = E[0] - S[0],
+        d1 = E[1] - S[1],
+        d2 = E[2] - S[2];
+      const L2 = d0 * d0 + d1 * d1 + d2 * d2 || 1e-12;
+      for (const ion of this.near) {
+        const t = Math.max(0, Math.min(1, ((ion.x - S[0]) * d0 + (ion.y - S[1]) * d1 + (ion.z - S[2]) * d2) / L2));
+        const w: Vec3 = [ion.x - (S[0] + d0 * t), ion.y - (S[1] + d1 * t), ion.z - (S[2] + d2 * t)];
+        const d = Math.hypot(w[0], w[1], w[2]);
+        const s = d > 1e-12 ? -(first ? t : 1 - t) / d : 0;
+        out.push({ f: d - ion.r, g: [s * w[0], s * w[1], s * w[2]] });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * ε-steepest ascent of min_j f_j(P) in the sphere: the step follows the min-norm point of the hull of
+   * the gradients of the terms within ε of the minimum (and the inward normal when within ε of the
+   * sphere), which raises all of them; ε shrinks when no step helps. It stops at a stationary point
+   * (0 in that hull, the KKT condition), to about 1e-9 Å.
+   */
+  ascend(start: Vec3): { P: Vec3; v: number } {
+    let P = start,
+      v = this.value(P),
+      eps = 0.02,
+      step = 0.1;
+    for (let iter = 0; iter < 400 && eps > 1e-10; iter++) {
+      const T = this.terms(P).sort((x, y) => x.f - y.f);
+      const act = T.filter((x) => x.f <= T[0].f + eps).slice(0, 8).map((x) => x.g);
+      const off: Vec3 = [P[0] - this.M[0], P[1] - this.M[1], P[2] - this.M[2]];
+      const r = Math.hypot(off[0], off[1], off[2]);
+      if (r > this.R - eps && r > 0) act.push([-off[0] / r, -off[1] / r, -off[2] / r]);
+      const d = minNormPoint(act);
+      const nd = Math.hypot(d[0], d[1], d[2]);
+      let moved = false;
+      if (nd > 1e-12)
+        for (let s = step; s > 1e-11; s /= 2) {
+          const Q: Vec3 = [P[0] + (s * d[0]) / nd, P[1] + (s * d[1]) / nd, P[2] + (s * d[2]) / nd];
+          if (!this.inside(Q)) continue;
+          const w = this.value(Q);
+          if (w > v + 1e-14) {
+            P = Q;
+            v = w;
+            step = Math.min(0.25, s * 2);
+            moved = true;
+            break;
+          }
+        }
+      if (!moved) eps /= 4;
+    }
+    return { P, v };
+  }
 }

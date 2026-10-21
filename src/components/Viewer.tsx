@@ -488,7 +488,7 @@ export function populateContent(
   if (spec.hopPath) {
     const hp = spec.hopPath;
     const pts: number[] = [];
-    for (const [a, b] of hp.segs) pts.push(...a, ...b);
+    for (const path of hp.paths) for (let i = 0; i + 1 < path.length; i++) pts.push(...path[i], ...path[i + 1]);
     const band = new LineMaterial({ color: srgb(hp.color), linewidth: 7, transparent: true, opacity: 0.55, depthTest: false });
     const dash = new LineMaterial({ color: new THREE.Color(cssVar("--ink", "#1a1f2b")), linewidth: 3, dashed: true, dashSize: 0.28, gapSize: 0.2, depthTest: false });
     for (const [mat, order] of [
