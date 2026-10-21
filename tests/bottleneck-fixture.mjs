@@ -107,6 +107,16 @@ try {
     assert.equal(field.segment(A, A).clearance, Infinity);
     const res = field.bentPath(A, B);
     assert.ok(Number.isFinite(res.clearance) && res.clearance > 5, `sparse framework clearance: ${res.clearance}`);
+
+    // The all-ion fallback must not pass the array as function arguments: periodic images / large
+    // frameworks can exceed the engine's argument limit. Repeating the same distant ion leaves the
+    // analytic endpoint bound unchanged. A short hop keeps the regression inexpensive.
+    const ion = field.ions[0];
+    field.ions = Array(150000).fill(ion);
+    const C = A.map((v, k) => v + (k === 0 ? 0.01 : 0));
+    const expected = Math.min(...[A, C].map((P) => Math.hypot(ion.x - P[0], ion.y - P[1], ion.z - P[2]) - ion.r));
+    const large = field.bentPath(A, C);
+    near(large.clearance, expected, 1e-9, 'large sparse framework endpoint bound');
   }
 } finally {
   await server.close();

@@ -176,10 +176,10 @@ export class FrameworkField {
     let rMax = 0;
     for (const ion of this.ions) if (ion.r > rMax) rMax = ion.r;
     const cap = Math.max(0, Math.min(this.segment(A, A).clearance, this.segment(B, B).clearance)) + 1e-6;
-    const near: FieldIon[] = [];
     // No ion within the binned reach of an end (e.g. a metal-rich cell with a sparse framework): the cap is
-    // infinite and the bin range unbounded, so every ion is a candidate instead.
-    if (!Number.isFinite(cap)) near.push(...this.ions);
+    // infinite and the bin range unbounded, so every ion is a candidate instead. Reuse the array to avoid
+    // the function argument limit of push(...ions) for large frameworks; BentPath only reads it.
+    const near: FieldIon[] = Number.isFinite(cap) ? [] : this.ions;
     const lo = (i: number) => Math.floor((M[i] - R - cap - rMax) / this.binSize);
     const hi = (i: number) => Math.floor((M[i] + R + cap + rMax) / this.binSize);
     if (Number.isFinite(cap))
