@@ -177,15 +177,19 @@ export class FrameworkField {
     for (const ion of this.ions) if (ion.r > rMax) rMax = ion.r;
     const cap = Math.max(0, Math.min(this.segment(A, A).clearance, this.segment(B, B).clearance)) + 1e-6;
     const near: FieldIon[] = [];
+    // No ion within the binned reach of an end (e.g. a metal-rich cell with a sparse framework): the cap is
+    // infinite and the bin range unbounded, so every ion is a candidate instead.
+    if (!Number.isFinite(cap)) near.push(...this.ions);
     const lo = (i: number) => Math.floor((M[i] - R - cap - rMax) / this.binSize);
     const hi = (i: number) => Math.floor((M[i] + R + cap + rMax) / this.binSize);
-    for (let i = lo(0); i <= hi(0); i++)
-      for (let j = lo(1); j <= hi(1); j++)
-        for (let k = lo(2); k <= hi(2); k++)
-          for (const idx of this.bins.get(`${i},${j},${k}`) ?? []) {
-            const ion = this.ions[idx];
-            if (Math.hypot(ion.x - M[0], ion.y - M[1], ion.z - M[2]) - ion.r - R <= cap) near.push(ion);
-          }
+    if (Number.isFinite(cap))
+      for (let i = lo(0); i <= hi(0); i++)
+        for (let j = lo(1); j <= hi(1); j++)
+          for (let k = lo(2); k <= hi(2); k++)
+            for (const idx of this.bins.get(`${i},${j},${k}`) ?? []) {
+              const ion = this.ions[idx];
+              if (Math.hypot(ion.x - M[0], ion.y - M[1], ion.z - M[2]) - ion.r - R <= cap) near.push(ion);
+            }
     const path = new BentPath(A, B, M, R, near);
     const STEP = 0.25;
     const n = Math.floor(R / STEP);

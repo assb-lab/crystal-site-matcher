@@ -95,6 +95,19 @@ try {
     for (const h of rec.hops) assert.equal(h.viaFrac.length, 3);
   }
   assert.ok(x.HOP_COLUMNS.includes('via_x'));
+
+  // a sparse framework: no anion within reach of the Li–Li hop, so the end clearance is infinite; the search
+  // must still end (it looped over an unbounded bin range) and give a finite radius set by the far anion
+  {
+    const a = 20;
+    const cif = `data_t\n_cell_length_a ${a}\n_cell_length_b ${a}\n_cell_length_c ${a}\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\n_symmetry_space_group_name_H-M 'P 1'\nloop_\n_symmetry_equiv_pos_as_xyz\n'x,y,z'\nloop_\n_atom_type_symbol\n_atom_type_oxidation_number\nLi+ 1\nCl- -1\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nLi1 Li+ 0.4 0.5 0.5 1\nLi2 Li+ 0.55 0.5 0.5 1\nCl1 Cl- 0.0 0.0 0.0 1\n`;
+    const s = prepare(cif);
+    const field = fieldOf(s);
+    const [A, B] = [s.crystal.positions[0].cart, s.crystal.positions[1].cart];
+    assert.equal(field.segment(A, A).clearance, Infinity);
+    const res = field.bentPath(A, B);
+    assert.ok(Number.isFinite(res.clearance) && res.clearance > 5, `sparse framework clearance: ${res.clearance}`);
+  }
 } finally {
   await server.close();
 }
