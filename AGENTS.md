@@ -69,6 +69,7 @@ src/lib/          計算ロジック（React・DOM に依存しない。CLI か�
   pipeline.ts       アプリと CLI で共通の計算手順（構造準備 → 静的特徴量 → グリッド）
   doc.ts            アプリの「開いている構造」（表示設定などを含む）
   useFeatures.ts    アプリ用の非同期計算フック（pipeline.ts を使う）
+src/webmcp.ts     WebMCP のツール（AI エージェント向け。src/lib の関数を呼ぶだけで、計算は書かない）
 src/components/   React コンポーネント
 src/i18n/         ja.ts（基準）/ en.ts / translate.ts（React 非依存）/ index.tsx（Provider）/ domain.ts
 src/cli/          csm-features（extract.ts = Node API なしの中核、csm-features.ts = 入出力）
