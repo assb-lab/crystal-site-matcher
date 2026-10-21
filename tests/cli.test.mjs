@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import test from 'node:test';
 
 const run = (args, opts = {}) => spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024, ...opts });
@@ -14,6 +14,16 @@ test('CLI core: features, hops, overrides and formatting', () => {
 });
 
 const CLI = 'dist/csm-features.mjs';
+// the shebang only works when the build leaves the file executable (#64)
+test('built CLI runs directly through its shebang', { skip: (process.platform === 'win32' && 'no exec bit on Windows') || (!existsSync(CLI) && 'run pnpm build first') }, () => {
+  assert.equal(statSync(CLI).mode & 0o755, 0o755, 'dist/csm-features.mjs is not executable');
+  const env = { ...process.env, PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ''}` };
+  const r = spawnSync(`./${CLI}`, ['--help'], { encoding: 'utf8', timeout: 60000, env });
+  assert.ifError(r.error);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^csm-features /);
+});
+
 test('built CLI (dist/csm-features.mjs) writes features and hops', { skip: !existsSync(CLI) && 'run pnpm build first' }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'csm-'));
   try {
