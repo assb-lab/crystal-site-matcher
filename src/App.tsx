@@ -13,7 +13,9 @@ import { markOnboardingSeen, onboardingSeen } from "./lib/onboarding";
 import { useThemePref } from "./lib/theme";
 import LangToggle from "./components/LangToggle";
 import { tError, useT, type MsgKey, type Params } from "./i18n";
+import { translate } from "./i18n/translate";
 import { MsgError } from "./lib/messages";
+import { registerWebMcp, type AppBridge, type View } from "./webmcp";
 
 interface BannerItem {
   key: MsgKey;
@@ -27,6 +29,27 @@ function nextSlot(docs: Doc[]): number {
   const used = new Set(docs.map((d) => d.colorSlot));
   for (let i = 0; i < 8; i++) if (!used.has(i)) return i;
   return 8; // beyond the categorical palette: neutral colour, identified by label
+}
+
+/** Structures of every data block of one CIF text (at most MAX_BLOCKS_PER_FILE), with per-block errors. */
+function docsFromText(text: string, fileName: string, docs: Doc[]): { made: Doc[]; errs: BannerItem[] } {
+  const errs: BannerItem[] = [];
+  const made: Doc[] = [];
+  let current = docs;
+  const blocks = blocksWithAtoms(text);
+  if (!blocks.length) throw new MsgError("err.noAtomBlock");
+  const n = Math.min(blocks.length, MAX_BLOCKS_PER_FILE);
+  for (let i = 0; i < n; i++) {
+    try {
+      const d = createDoc(blocks, fileName, i, nextSlot(current));
+      made.push(d);
+      current = [...current, d];
+    } catch (e) {
+      errs.push({ key: "err.fileBlock", params: { file: fileName, block: blocks[i].name }, error: e });
+    }
+  }
+  if (blocks.length > MAX_BLOCKS_PER_FILE) errs.push({ key: "err.tooManyBlocks", params: { file: fileName, n: blocks.length, max: MAX_BLOCKS_PER_FILE } });
+  return { made, errs };
 }
 
 function sampleDoc(id: string, docs: Doc[]): Doc | null {
@@ -109,20 +132,10 @@ export default function App() {
       let current = docs;
       for (const f of Array.from(files)) {
         try {
-          const text = await f.text();
-          const blocks = blocksWithAtoms(text);
-          if (!blocks.length) throw new MsgError("err.noAtomBlock");
-          const n = Math.min(blocks.length, MAX_BLOCKS_PER_FILE);
-          for (let i = 0; i < n; i++) {
-            try {
-              const d = createDoc(blocks, f.name, i, nextSlot(current));
-              made.push(d);
-              current = [...current, d];
-            } catch (e) {
-              errs.push({ key: "err.fileBlock", params: { file: f.name, block: blocks[i].name }, error: e });
-            }
-          }
-          if (blocks.length > MAX_BLOCKS_PER_FILE) errs.push({ key: "err.tooManyBlocks", params: { file: f.name, n: blocks.length, max: MAX_BLOCKS_PER_FILE } });
+          const r = docsFromText(await f.text(), f.name, current);
+          made.push(...r.made);
+          errs.push(...r.errs);
+          current = [...current, ...r.made];
         } catch (e) {
           errs.push({ key: "err.readFile", params: { file: f.name }, error: e });
         }
@@ -185,6 +198,63 @@ export default function App() {
       window.removeEventListener("drop", drop);
     };
   }, [openFiles]);
+
+  // ---------- WebMCP tools for AI agents (#70) ----------
+  // The tools read the latest state through this ref; their own changes are applied to it at once, so a
+  // call made right after another sees its result before React re-renders.
+  const live = useRef({ docs, activeId: active?.id ?? null, mode, tab });
+  live.current = { docs, activeId: active?.id ?? null, mode, tab };
+  useEffect(() => {
+    const tEn = (k: MsgKey, p?: Params) => translate("en", k, p);
+    const show = (id: string, view?: View) => {
+      const cur = live.current;
+      const next = { ...cur, activeId: id, mode: view === "compare" ? ("compare" as const) : ("structure" as const), tab: view && view !== "compare" ? view : cur.tab };
+      setActiveId(id);
+      setMode(next.mode);
+      setTab(next.tab);
+      live.current = next;
+    };
+    const add = (made: Doc[]) => {
+      setDocs((ds) => [...ds, ...made]);
+      live.current = { ...live.current, docs: [...live.current.docs, ...made] };
+      show(made[made.length - 1].id);
+    };
+    const bridge: AppBridge = {
+      docs: () => live.current.docs,
+      activeId: () => live.current.activeId,
+      view: () => (live.current.mode === "compare" ? "compare" : live.current.tab),
+      openSample(id) {
+        const d = sampleDoc(id, live.current.docs);
+        if (!d) throw new Error(`Unknown sample "${id}"`);
+        add([d]);
+        return d;
+      },
+      openCif(text, fileName) {
+        const { made, errs } = docsFromText(text, fileName, live.current.docs);
+        if (made.length) add(made);
+        setBanner(errs.length ? errs : null);
+        return { opened: made, errors: errs.map((b) => tEn(b.key, { ...b.params, error: b.error !== undefined ? tError(tEn, b.error) : "" })) };
+      },
+      select: show,
+      update(id, patch) {
+        setDocs((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+        live.current = { ...live.current, docs: live.current.docs.map((d) => (d.id === id ? { ...d, ...patch } : d)) };
+      },
+      close(id) {
+        const ds = live.current.docs;
+        const i = ds.findIndex((d) => d.id === id);
+        const next = ds.filter((d) => d.id !== id);
+        setDocs((cur) => cur.filter((d) => d.id !== id));
+        if (live.current.activeId === id) {
+          const nid = next[Math.min(i, next.length - 1)]?.id ?? null;
+          setActiveId(nid);
+          live.current = { ...live.current, activeId: nid };
+        }
+        live.current = { ...live.current, docs: next };
+      },
+    };
+    return registerWebMcp(bridge);
+  }, []);
 
   return (
     <div className="app">

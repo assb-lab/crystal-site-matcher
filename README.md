@@ -57,6 +57,26 @@ pnpm features cifs/*.cif -o features.csv                   # pnpm から（同�
 - 計算条件: `--ox "Co=3,O1=-2"`（元素またはサイトラベルごとの酸化数）、`--hop-cutoff 4`、`--grid 0.2`（BVSE / 空隙グリッドの間隔, Å）、`--no-grid`（E_*, R_*, maxVoid, siteE_* を省略）。
 - 複数ファイルは CPU 数まで並列に計算します（`-j` で変更）。読めないファイルがあっても残りを計算し、エラーを標準エラーに出して終了コード 1 で終わります。
 
+## AI エージェントからの操作（WebMCP）
+
+[WebMCP](https://github.com/webmachinelearning/webmcp)（`document.modelContext`。旧プレビューの `navigator.modelContext` にも対応）を実装したブラウザでは、ページを開くとアプリが次のツールを登録します。ブラウザ内の AI エージェントは、画面をクリックせずに関数として呼び出せます。WebMCP のないブラウザでは何もしません。
+
+| ツール | 内容 |
+|---|---|
+| `list_structures` / `list_samples` | 開いている構造 / 同梱サンプルの一覧 |
+| `open_sample` / `open_cif` | サンプル / CIF の本文を開いて表示する |
+| `select_structure` | 構造を選び、タブ（`struct`・`site`・`subst`・`feat`・`pattern`）か比較表示（`compare`）に切り替える |
+| `get_structure` | 格子・空間群・サイト（元素・酸化数・占有率・座標）・計算条件 |
+| `get_features` | 特徴量（`grid: false` で BVSE グリッドを省略、`keys` で絞り込み） |
+| `get_hops` | 可動イオンのホップの組（距離・ボトルネック半径・本数） |
+| `analyze_site` / `rank_substituents` | サイト解析 / 置換候補のスコア順（画面と同じ計算） |
+| `set_calculation` | 可動イオン・ホップ距離の上限・グリッド間隔の変更 |
+| `close_structure` | 構造を閉じる |
+
+- 値は画面・CLI と同じ計算コードで求めます。結果は JSON のテキストで、ラベルとメッセージは英語です。
+- 読み取りだけのツールには `readOnlyHint` を付けています。外部への通信はせず、ツールは同じオリジンの文書にだけ公開されます。
+- 定義は `src/webmcp.ts` にあります。
+
 ## 判定の考え方
 
 | 指標 | 内容 |
