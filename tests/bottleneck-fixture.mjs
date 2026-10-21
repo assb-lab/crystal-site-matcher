@@ -117,6 +117,14 @@ try {
     const expected = Math.min(...[A, C].map((P) => Math.hypot(ion.x - P[0], ion.y - P[1], ion.z - P[2]) - ion.r));
     const large = field.bentPath(A, C);
     near(large.clearance, expected, 1e-9, 'large sparse framework endpoint bound');
+
+    // no framework ion at all (a mobile ion with oxidation state 0 skips every ion): the straight line,
+    // unlimited (the ascent used to fail on an empty set of gradients)
+    const empty = fieldOf(s);
+    empty.ions = [];
+    const res0 = empty.bentPath(A, B);
+    assert.equal(res0.clearance, Infinity);
+    assert.deepEqual(res0.via, [0, 1, 2].map((k) => (A[k] + B[k]) / 2));
   }
 } finally {
   await server.close();

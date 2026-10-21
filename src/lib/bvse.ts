@@ -190,6 +190,8 @@ export class FrameworkField {
               const ion = this.ions[idx];
               if (Math.hypot(ion.x - M[0], ion.y - M[1], ion.z - M[2]) - ion.r - R <= cap) near.push(ion);
             }
+    // no framework ion at all (e.g. a mobile ion with oxidation state 0): nothing limits the straight line
+    if (!near.length) return { clearance: Infinity, at: M, via: M };
     const path = new BentPath(A, B, M, R, near);
     const STEP = 0.25;
     const n = Math.floor(R / STEP);
