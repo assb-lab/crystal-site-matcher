@@ -3,7 +3,7 @@
 import { parseCif } from "../lib/cif";
 import { FEATURE_DEFS, FEATURE_BY_KEY, FeatureValue } from "../lib/features";
 import { DEFAULT_GRID_RES, DEFAULT_HOP_CUTOFF, gridStage, hasMobile, prepareStructure, staticStage } from "../lib/pipeline";
-import { Lattice, Vec3, add } from "../lib/structure";
+import { Vec3, add, toFrac } from "../lib/structure";
 import { featDesc, featLabel, fmtFeature, groupLabel } from "../i18n/domain";
 import { tError, translate, type TFn } from "../i18n/translate";
 
@@ -27,7 +27,8 @@ export interface HopRecord {
   rb: number; // bottleneck radius (Å)
   fromFrac: Vec3;
   toFrac: Vec3; // end point including the lattice translation (may lie outside [0,1))
-  neckFrac: Vec3; // point of the bottleneck on the straight path
+  neckFrac: Vec3; // point of the bottleneck on the path
+  viaFrac: Vec3; // bend point of the path (the midpoint when the straight line is widest)
   /** BVSE along the best grid path (only with the grid): saddle above the grid minimum, barriers from each end (eV) */
   Esad: number | null;
   barrierFwd: number | null;
@@ -68,11 +69,6 @@ export interface ExtractResult {
 }
 
 const GRID_KEYS = FEATURE_DEFS.filter((d) => d.group === "grid").map((d) => d.key);
-
-function toFrac(L: Lattice, c: Vec3): Vec3 {
-  const m = L.inv;
-  return [0, 1, 2].map((i) => m[i][0] * c[0] + m[i][1] * c[1] + m[i][2] * c[2]) as Vec3;
-}
 
 /** Extract features of every data block with atomic coordinates in one CIF file. */
 export async function extractFromText(text: string, file: string, opts: ExtractOptions = {}): Promise<ExtractResult> {
@@ -115,6 +111,7 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
           fromFrac: P[h.a].frac,
           toFrac: add(P[h.b].frac, h.t),
           neckFrac: toFrac(L, h.mid),
+          viaFrac: toFrac(L, h.via),
           Esad: g?.barriers?.[i]?.Esad ?? null,
           barrierFwd: g?.barriers?.[i]?.fwd ?? null,
           barrierRev: g?.barriers?.[i]?.rev ?? null,
@@ -160,13 +157,13 @@ export function featureRows(records: StructureRecord[]): string[][] {
   ];
 }
 
-export const HOP_COLUMNS = ["file", "block", "mobile", "from", "to", "d", "rb", "from_x", "from_y", "from_z", "to_x", "to_y", "to_z", "neck_x", "neck_y", "neck_z", "E_saddle", "barrier_fwd", "barrier_rev"];
+export const HOP_COLUMNS = ["file", "block", "mobile", "from", "to", "d", "rb", "from_x", "from_y", "from_z", "to_x", "to_y", "to_z", "neck_x", "neck_y", "neck_z", "via_x", "via_y", "via_z", "E_saddle", "barrier_fwd", "barrier_rev"];
 const opt = (v: number | null) => (v === null ? "" : num(v));
 
 export function hopRows(records: StructureRecord[]): string[][] {
   const rows = [HOP_COLUMNS];
   for (const r of records)
-    for (const h of r.hops) rows.push([r.file, r.block, r.mobile ?? "", h.from, h.to, num(h.d), num(h.rb), ...h.fromFrac.map(coord), ...h.toFrac.map(coord), ...h.neckFrac.map(coord), opt(h.Esad), opt(h.barrierFwd), opt(h.barrierRev)]);
+    for (const h of r.hops) rows.push([r.file, r.block, r.mobile ?? "", h.from, h.to, num(h.d), num(h.rb), ...h.fromFrac.map(coord), ...h.toFrac.map(coord), ...h.neckFrac.map(coord), ...h.viaFrac.map(coord), opt(h.Esad), opt(h.barrierFwd), opt(h.barrierRev)]);
   return rows;
 }
 
@@ -218,7 +215,7 @@ export function toJson(result: ExtractResult, settings: JsonSettings): string {
           return [d.key, v === undefined || v === null ? null : typeof v === "number" ? (Number.isFinite(v) ? round(v) : null) : cell(d.key, v) || null];
         }),
       ),
-      ...(settings.hops && r.mobile ? { hops: r.hops.map((h) => ({ from: h.from, to: h.to, d: round(h.d), rb: round(h.rb), fromFrac: roundVec(h.fromFrac), toFrac: roundVec(h.toFrac), neckFrac: roundVec(h.neckFrac), ...(h.Esad !== null ? { Esad: round(h.Esad), barrierFwd: round(h.barrierFwd!), barrierRev: round(h.barrierRev!) } : {}) })) } : {}),
+      ...(settings.hops && r.mobile ? { hops: r.hops.map((h) => ({ from: h.from, to: h.to, d: round(h.d), rb: round(h.rb), fromFrac: roundVec(h.fromFrac), toFrac: roundVec(h.toFrac), neckFrac: roundVec(h.neckFrac), viaFrac: roundVec(h.viaFrac), ...(h.Esad !== null ? { Esad: round(h.Esad), barrierFwd: round(h.barrierFwd!), barrierRev: round(h.barrierRev!) } : {}) })) } : {}),
       ...(settings.sites !== false && r.sites.length
         ? { sites: r.sites.map((s) => ({ kind: s.kind, E: round(s.E), frac: roundVec(s.frac), nearest: s.nearest, dNearest: round(s.dNearest), curvature: s.curvature.map(round) })) }
         : {}),
