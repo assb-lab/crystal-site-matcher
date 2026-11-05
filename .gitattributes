@@ -1,0 +1,2 @@
+# Generated HTML embeds CIF text in template literals; trailing spaces are data.
+dist/index.html whitespace=-blank-at-eol

@@ -29,3 +29,14 @@ engineStrict: true
 
 # Check store contents against the lockfile integrity hashes.
 verifyStoreIntegrity: true
+
+# Keep plugins and SSR fixtures on the core and Vitest bundled with vite-plus.
+overrides:
+  vite@*: npm:@voidzero-dev/vite-plus-core@1.4.0
+  vitest@*: 5.0.5
+
+# The Vite core alias reports the Vite Plus version, although its API is Vite 8.
+# Accept only the core version pinned above for plugins declaring Vite 6/7/8 peers.
+peerDependencyRules:
+  allowedVersions:
+    vite: 1.4.0

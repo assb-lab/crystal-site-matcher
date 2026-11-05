@@ -19,7 +19,7 @@ Crystal Site Matcher は CIF を読み込み、次の 2 つを行います。
 ```bash
 pnpm install
 pnpm dev                 # 開発サーバー
-pnpm build               # dist/index.html と dist/csm-features.mjs を生成（vite を 2 回実行）
+pnpm build               # dist/index.html と dist/csm-features.mjs を生成（vp build を 2 回実行）
 pnpm typecheck           # tsc --noEmit
 pnpm test                # node --test tests/*.test.mjs
 pnpm features <cif...>   # CLI の実行（node dist/csm-features.mjs）
@@ -35,7 +35,9 @@ pnpm samples             # src/samples/*.cif を生成
 
 ## 依存パッケージとセキュリティ（重要）
 
-- パッケージマネージャーは **pnpm（12.3.4 以上）だけ** を使います。npm / yarn / bun は使わず、それらのロックファイルも作りません。
+- 開発環境は `.node-version` の Node.js 26.13.0 と `packageManager` の pnpm 12.16.1 に合わせます。
+- ビルドはローカルの Vite Plus 1.4.0 を使います。更新時は `pnpm-workspace.yaml` の Vite core alias と同梱 Vitest の override も同じ組に更新してください。テストは `node:test` のままです。
+- パッケージマネージャーは **pnpm（12.16.1 以上、13 未満）だけ** を使います。npm / yarn / bun は使わず、それらのロックファイルも作りません。
 - `pnpm-workspace.yaml` のサプライチェーン対策は**ユーザーの明示的な承認なしに緩めない**でください。対象の設定は次のとおりです。
   - `minimumReleaseAge`
   - `trustPolicy: no-downgrade`
