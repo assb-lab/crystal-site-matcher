@@ -141,10 +141,14 @@ CIF の格子角は、未記載・`?`・`.` のときのみ90°として扱い�
 
 ## 開発
 
-パッケージマネージャーは **pnpm（12.3.4 以上）** を使います。npm / yarn では `devEngines` の指定によりインストールが止まります。
+開発には **Node.js 26.13.0**（`.node-version`）と **pnpm 12.16.1**（`packageManager`）を使います。Node.js は 26 系、pnpm は 12 系をサポートします。npm / yarn では `devEngines` の指定によりインストールが止まります。
+
+ビルド・開発サーバーは [Vite Plus](https://viteplus.dev/guide/local-cli) 1.4.0 を使います。2026-11-05 時点の最新版 1.5.0 は公開から7日未満のため、既存の安全設定に従って 1.4.0 に固定しています。Vite core の alias と同梱 Vitest の版は `pnpm-workspace.yaml` で統一しています。既存のテストは引き続き `node:test`、型検査は TypeScript で実行します。
 
 ```bash
-# pnpm を用意（どれか 1 つ）: corepack enable（Node.js 24 以下に同梱）/ brew install pnpm
+# Node.js 26.13.0 と pnpm 12.16.1 を用意してから実行
+# グローバル Vite Plus を使う場合: vp env pin node@26.13.0 pnpm@12.16.1
+# グローバル Vite Plus は任意。以下のコマンドはローカルの vp を使用
 pnpm install
 pnpm dev                 # 開発サーバー
 pnpm build               # dist/index.html（アプリ）と dist/csm-features.mjs（CLI）を生成
@@ -169,7 +173,7 @@ UI の文字列は `src/i18n/ja.ts`（基準）と `src/i18n/en.ts` にありま
 
 依存を追加・更新したら `pnpm-lock.yaml` もコミットし、CI などでは `pnpm install --frozen-lockfile` を使ってください。
 
-技術構成: Vite + React + TypeScript + three.js（TrackballControls、ConvexGeometry）、`vite-plugin-singlefile` で 1 ファイル化。
+技術構成: Vite Plus（Vite + Rolldown）+ React + TypeScript + three.js（TrackballControls、ConvexGeometry）、`vite-plugin-singlefile` で 1 ファイル化。
 
 ### 参照データの再生成（Python / uv）
 

@@ -1,6 +1,6 @@
 import { chmodSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin } from "vite-plus";
 import { thirdPartyNotices } from "./vite.licenses";
 
 // `pnpm build` (second step) → dist/csm-features.mjs: the command-line feature extractor as one
@@ -27,14 +27,14 @@ export default defineConfig({
     ssr: "src/cli/csm-features.ts",
     outDir: "dist",
     emptyOutDir: false, // keep dist/index.html from the app build
-    target: "node20",
+    target: "node26",
     minify: true,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         format: "es",
         entryFileNames: "csm-features.mjs",
         banner: "#!/usr/bin/env node",
-        inlineDynamicImports: true,
+        codeSplitting: false,
       },
     },
   },

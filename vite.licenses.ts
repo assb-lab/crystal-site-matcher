@@ -8,7 +8,7 @@
 // With `subsetOf`, the build fails if it bundles a package that the given notices file does not list.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Plugin } from "vite";
+import type { Plugin } from "vite-plus";
 
 interface Notice {
   key: string; // npm package name or data source name
