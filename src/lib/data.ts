@@ -44,8 +44,9 @@ export const IDEAL_POLYHEDRA = (idealRaw as IdealPolyhedron[]).filter((p) => p.s
 
 export const ELEMENT_SYMBOLS = Object.keys(ELEMENTS).sort((a, b) => ELEMENTS[a].Z - ELEMENTS[b].Z);
 
-export function elementColor(el: string): [number, number, number] {
-  return ELEMENTS[el]?.col ?? [200, 200, 200];
+/** Display colour of an element: the user's choice in `custom` (#74), else the VESTA default. */
+export function elementColor(el: string, custom?: Record<string, [number, number, number]>): [number, number, number] {
+  return custom?.[el] ?? ELEMENTS[el]?.col ?? [200, 200, 200];
 }
 
 export const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV"];

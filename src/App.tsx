@@ -15,6 +15,7 @@ import LangToggle from "./components/LangToggle";
 import { tError, useT, type MsgKey, type Params } from "./i18n";
 import { translate } from "./i18n/translate";
 import { MsgError } from "./lib/messages";
+import { useElementColors } from "./components/ElementColors";
 import { registerWebMcp, type AppBridge, type View } from "./webmcp";
 
 interface BannerItem {
@@ -104,16 +105,20 @@ export default function App() {
   const freshEntry = (d: Doc) => (entries[d.id] && entries[d.id].sig === featureSig(d) ? entries[d.id] : undefined);
 
   // ---------- thumbnails (one per tick) ----------
+  // A thumbnail drawn with other element colours (#74) is redrawn in place, keeping the old image meanwhile.
+  const { colors: elementColors } = useElementColors();
+  const thumbColors = useRef(new Map<string, typeof elementColors>());
   useEffect(() => {
-    const d = docs.find((x) => x.thumb === null);
+    const d = docs.find((x) => x.thumb === null || thumbColors.current.get(x.id) !== elementColors);
     if (!d) return;
     const t = setTimeout(() => {
       const { bonds } = deriveBonds(d.crystal, d.ox, d.bondSettings);
-      const spec = buildScene(d.crystal, bonds, { ...d.view, showLabels: false, supercell: [1, 1, 1], showHops: false, showIso: false, showMinima: false, atomScale: 0.3 }, null);
+      const spec = buildScene(d.crystal, bonds, { ...d.view, showLabels: false, supercell: [1, 1, 1], showHops: false, showIso: false, showMinima: false, atomScale: 0.3 }, null, { elementColors });
+      thumbColors.current.set(d.id, elementColors);
       updateDoc(d.id, () => ({ thumb: renderThumbnail(spec) ?? "" }));
     }, 30);
     return () => clearTimeout(t);
-  }, [docs, updateDoc]);
+  }, [docs, updateDoc, elementColors]);
 
   // ---------- opening files ----------
   const addDocs = useCallback((made: Doc[], activate = true) => {

@@ -6,6 +6,7 @@ import StructurePanel from "./StructurePanel";
 import FeaturesPanel, { autoIsoLevel } from "./FeaturesPanel";
 import PatternsPanel from "./PatternsPanel";
 import ViewControls from "./ViewControls";
+import { useElementColors } from "./ElementColors";
 import { Doc, createDoc, deriveBonds } from "../lib/doc";
 import { BondSettings, pairKey } from "../lib/bonding";
 import { analyzeSite } from "../lib/analysis";
@@ -54,8 +55,9 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
   const hops = entry?.static.hops;
   const selClass = useMemo(() => (hops && doc.hopSel ? (hopClasses(crystal, hops).find((c) => c.key === doc.hopSel) ?? null) : null), [crystal, hops, doc.hopSel]);
 
+  const { colors: elementColors } = useElementColors();
   const extras = useMemo<SceneExtras>(() => {
-    const x: SceneExtras = {};
+    const x: SceneExtras = { elementColors };
     if (hops?.length) {
       const rbs = hops.map((h) => h.rb);
       x.hopRange = [Math.min(...rbs), Math.max(...rbs)];
@@ -66,7 +68,7 @@ export default function StructureView({ doc, update, onReplace, tab, setTab, ent
     if (view.showIso && entry?.grid?.energy && doc.mobile)
       x.iso = { field: entry.grid.energy, n: entry.grid.n, level: view.isoLevel ?? autoIsoLevel(entry), color: ISO_COLOR };
     return x;
-  }, [view.showHops, view.showIso, view.showMinima, view.isoLevel, entry, doc.mobile, hops, selClass]);
+  }, [elementColors, view.showHops, view.showIso, view.showMinima, view.isoLevel, entry, doc.mobile, hops, selClass]);
 
   const scene = useMemo(() => buildScene(crystal, bonds, view, validSel ? doc.selectedKey : null, extras), [crystal, bonds, view, doc.selectedKey, validSel, extras]);
 

@@ -287,6 +287,9 @@ select {
 .stage-body {
   position: relative;
   min-height: 0;
+  /* the view menu lays itself out by the width of the 3D area (#74) */
+  container-type: inline-size;
+  container-name: stage;
 }
 .stage-hint {
   position: absolute;
@@ -438,6 +441,12 @@ select {
   flex-direction: column;
   gap: 10px;
 }
+/* PC windows (#74): as tall as the window allows, so the menu opens without a scroll bar */
+@media (min-width: 900px) and (min-height: 760px) {
+  .viewmenu-body {
+    max-height: calc(100vh - 160px);
+  }
+}
 .viewmenu fieldset {
   border: 0;
   margin: 0;
@@ -541,6 +550,189 @@ select {
 .elchip.is-on {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+/* element colour chips and preset palette (#74) */
+.colorchip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 1px 3px 1px 1px;
+  font: 500 12px/1.4 var(--font-mono);
+}
+.colorchip.is-custom {
+  border-color: var(--accent);
+}
+.colorchip.is-open {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.colorchip-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 1px 5px 1px 4px;
+  cursor: pointer;
+}
+.colorchip-pick i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.colorchip-reset {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.colorchip-reset:hover {
+  color: var(--accent);
+}
+/* the colour pop-up floats beside the view menu, or over it when the 3D area is narrow */
+.colorpop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: calc(min(300px, 100vw - 40px) + 8px);
+  width: 264px;
+  z-index: 5;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@container stage (max-width: 640px) {
+  .colorpop {
+    right: 0;
+  }
+}
+.custom-color {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sv-square {
+  position: relative;
+  height: 150px;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.sv-square:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.sv-square i {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.hue {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+}
+.hue::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+}
+.custom-color .field-inline input {
+  width: 9ch;
+}
+.hex-preview {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.palette-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+}
+.swatch {
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  padding: 0;
+  cursor: pointer;
+}
+.swatch:hover {
+  transform: scale(1.15);
+}
+.swatch.is-on,
+.palette-default.is-on i {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.palette-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  font-size: var(--fs-xs);
+}
+.palette-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.palette-default:hover {
+  background: var(--accent-soft);
+}
+.palette-default i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
 }
 .elchip.is-off {
   opacity: 0.45;
