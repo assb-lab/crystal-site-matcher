@@ -1,6 +1,7 @@
 // Turns a crystal + bond table into plain drawable primitives for the 3D viewer.
 import { BondTable } from "./bonding";
 import { elementColor, ELEMENTS } from "./data";
+import type { ElementColors } from "./elementColors";
 import { Crystal, Vec3, add, toCart } from "./structure";
 
 export type PolyMode = "elements" | "selected" | "none";
@@ -57,7 +58,7 @@ export const VACANCY_COLOR: Vec3 = [255, 255, 255];
 export const OCC_ROUNDING = 0.005;
 
 /** Aggregate chemical species at a position, retaining the unoccupied fraction. */
-export function atomSectors(cr: Crystal, pos: number): AtomSector[] {
+export function atomSectors(cr: Crystal, pos: number, colors?: ElementColors): AtomSector[] {
   const weights = new Map<string, number>();
   let rows = 0;
   for (const o of cr.positions[pos].occupants) {
@@ -70,7 +71,7 @@ export function atomSectors(cr: Crystal, pos: number): AtomSector[] {
   // full within the rounding of the CIF values (or over-full): normalise the display to 1
   const full = total >= 1 - OCC_ROUNDING * Math.max(rows, 1);
   const denominator = full ? total : 1;
-  const sectors: AtomSector[] = [...weights].sort(([a], [b]) => a.localeCompare(b)).map(([element, w]) => ({ element, fraction: w / denominator, color: elementColor(element) }));
+  const sectors: AtomSector[] = [...weights].sort(([a], [b]) => a.localeCompare(b)).map(([element, w]) => ({ element, fraction: w / denominator, color: elementColor(element, colors) }));
   if (!full) sectors.push({ element: null, fraction: 1 - total, color: VACANCY_COLOR });
   return sectors;
 }
@@ -153,6 +154,8 @@ export interface SceneHop {
 }
 
 export interface SceneExtras {
+  /** User colours by element (#74); the VESTA defaults otherwise. */
+  elementColors?: ElementColors;
   hops?: SceneHop[];
   /** Highlighted hops (one class); `hopRange` is the bottleneck range used for the colour scale. */
   selHops?: SceneHop[];
@@ -247,8 +250,8 @@ export function buildScene(
     if (atoms.has(key)) return atoms.get(key)!;
     const p = cr.positions[pos];
     const f: Vec3 = [p.frac[0] + t[0], p.frac[1] + t[1], p.frac[2] + t[2]];
-    const sectors = atomSectors(cr, pos);
-    const a: SceneAtom = { key, pos, t, xyz: toCart(L, f), color: sectors.length === 1 ? sectors[0].color : elementColor(mainEl(pos)), sectors, radius: radiusOf(pos), extra };
+    const sectors = atomSectors(cr, pos, extras.elementColors);
+    const a: SceneAtom = { key, pos, t, xyz: toCart(L, f), color: sectors.length === 1 ? sectors[0].color : elementColor(mainEl(pos), extras.elementColors), sectors, radius: radiusOf(pos), extra };
     atoms.set(key, a);
     return a;
   };

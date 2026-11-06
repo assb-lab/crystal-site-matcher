@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Crystal } from "../lib/structure";
 import { chargeBalance, formulaString, guessOxidationStates } from "../lib/structure";
 import { BondSettings, BondTable, relevantPairs } from "../lib/bonding";
-import { elementColor } from "../lib/data";
+import { useElementColors } from "./ElementColors";
 import { fmt, ionLabel, rgbCss } from "../lib/format";
 import { tMsg, useT } from "../i18n";
 
@@ -22,6 +22,7 @@ interface Props {
 
 export default function StructurePanel(p: Props) {
   const t = useT();
+  const { colorOf } = useElementColors();
   const { crystal: cr, ox, bondSettings: bs } = p;
   const L = cr.lattice;
   const { formula, Z } = formulaString(cr);
@@ -126,7 +127,7 @@ export default function StructurePanel(p: Props) {
                 return (
                   <tr key={s.index} className={`clickable ${p.selectedGroup === g.key ? "is-selected" : ""}`} onClick={() => p.onSelectGroup(g.key)}>
                     <td>
-                      <span className="dot" style={{ background: rgbCss(elementColor(s.element)) }} />
+                      <span className="dot" style={{ background: rgbCss(colorOf(s.element)) }} />
                       {s.label}
                     </td>
                     <td>{ionLabel(s.element, ox[s.label])}</td>

@@ -3,8 +3,9 @@ import { atomSectors, defaultPolyElements, polyCenterElements, type PolyCenter, 
 import type { Crystal, Vec3 } from "../lib/structure";
 import type { BondTable } from "../lib/bonding";
 import type { ViewDir } from "./Viewer";
-import { elementColor } from "../lib/data";
+import { hexRgb, rgbHex } from "../lib/elementColors";
 import { rgbCss } from "../lib/format";
+import { useElementColors } from "./ElementColors";
 import { useT } from "../i18n";
 
 interface Props {
@@ -18,7 +19,9 @@ interface Props {
 
 export default function ViewControls({ view, setView, onViewDir, crystal, ox, bonds }: Props) {
   const t = useT();
+  const { colors, colorOf, setColor, resetColors } = useElementColors();
   const els = [...new Set(crystal.sites.map((s) => s.element))];
+  const customised = els.filter((el) => colors[el]);
   const mixed = crystal.positions.some((p) => atomSectors(crystal, p.index).length > 1);
   const centerEls = polyCenterElements(crystal, ox, view.polyCenter);
   const setCenter = (c: PolyCenter) =>
@@ -111,7 +114,7 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
                 {centerEls.length === 0 && <span className="muted small">{t("view.poly.noCenter")}</span>}
                 {centerEls.map((el) => (
                   <button key={el} className={`elchip ${view.polyElements.includes(el) ? "is-on" : ""}`} onClick={() => toggleIn("polyElements", el)} aria-pressed={view.polyElements.includes(el)}>
-                    <i style={{ background: rgbCss(elementColor(el)) }} />
+                    <i style={{ background: rgbCss(colorOf(el)) }} />
                     {el}
                   </button>
                 ))}
@@ -151,12 +154,46 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
                 const hidden = view.hiddenElements.includes(el);
                 return (
                   <button key={el} className={`elchip ${hidden ? "is-off" : "is-on"}`} onClick={() => toggleIn("hiddenElements", el)} aria-pressed={!hidden}>
-                    <i style={{ background: rgbCss(elementColor(el)) }} />
+                    <i style={{ background: rgbCss(colorOf(el)) }} />
                     {el}
                   </button>
                 );
               })}
             </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>{t("view.colors")}</legend>
+            <div className="chips">
+              {els.map((el) => (
+                <span key={el} className={`colorchip ${colors[el] ? "is-custom" : ""}`}>
+                  <label htmlFor={`color-${el}`} title={t("view.colors.pick", { el })}>
+                    <input
+                      id={`color-${el}`}
+                      type="color"
+                      value={rgbHex(colorOf(el))}
+                      aria-label={t("view.colors.pick", { el })}
+                      onChange={(e) => {
+                        const c = hexRgb(e.target.value);
+                        if (c) setColor(el, c);
+                      }}
+                    />
+                    {el}
+                  </label>
+                  {colors[el] && (
+                    <button className="colorchip-reset" onClick={() => setColor(el, null)} aria-label={t("view.colors.resetOne", { el })} title={t("view.colors.resetOne", { el })} id={`color-reset-${el}`}>
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+            <p className="muted small">{t("view.colors.hint")}</p>
+            {customised.length > 0 && (
+              <button className="btn btn-ghost btn-small" onClick={() => resetColors(customised)} id="color-reset-all">
+                {t("view.colors.reset")}
+              </button>
+            )}
           </fieldset>
         </div>
       </details>

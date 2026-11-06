@@ -3,7 +3,8 @@ import type { Crystal, Neighbor } from "../lib/structure";
 import type { BondSettings, BondTable } from "../lib/bonding";
 import { pairKey } from "../lib/bonding";
 import { SiteAnalysis, RadiusKind, spinsFor } from "../lib/analysis";
-import { elementColor, roman } from "../lib/data";
+import { roman } from "../lib/data";
+import { useElementColors } from "./ElementColors";
 import { fmt, ionLabel, pct, rgbCss } from "../lib/format";
 import { useI18n, useT } from "../i18n";
 import { cshmWord, radiusNote, radiusNotes, shapeName } from "../i18n/domain";
@@ -31,6 +32,7 @@ interface Props {
 
 export default function SitePanel(p: Props) {
   const { t, lang } = useI18n();
+  const { colorOf } = useElementColors();
   const { crystal, ox, bonds, bondSettings, analysis: a } = p;
   if (!a) return <p className="muted">{t("site.pick")}</p>;
   const P = crystal.positions[a.pos];
@@ -186,7 +188,7 @@ export default function SitePanel(p: Props) {
               {a.ligands.map((l, i) => (
                 <tr key={i}>
                   <td>
-                    <span className="dot" style={{ background: rgbCss(elementColor(l.species[0].el)) }} />
+                    <span className="dot" style={{ background: rgbCss(colorOf(l.species[0].el)) }} />
                     {l.label}
                   </td>
                   <td>{l.species.map((s) => ionLabel(s.el, s.ox)).join("/")}</td>
@@ -374,6 +376,7 @@ function DistanceStrip({
     mr = 14,
     base = 92;
   const t = useT();
+  const { colorOf } = useElementColors();
   const [local, setLocal] = useState<number | null>(null);
   const dragging = useRef(false);
   const lastCount = useRef(-1);
@@ -475,7 +478,7 @@ function DistanceStrip({
         {stacks.map(({ n, k }, i) => {
           const el = crystal.sites[crystal.positions[n.j].main].element;
           const inc = local !== null ? n.d <= local : bonded.has(n);
-          const col = rgbCss(elementColor(el));
+          const col = rgbCss(colorOf(el));
           return (
             <circle key={i} cx={X(n.d)} cy={base - 2 - k * 11.5} r={4.6} fill={inc ? col : "var(--panel)"} stroke={inc ? "var(--ink)" : col} strokeWidth={inc ? 0.8 : 1.6}>
               <title>{`${crystal.positions[n.j].group} ${n.d.toFixed(3)} Å`}</title>
