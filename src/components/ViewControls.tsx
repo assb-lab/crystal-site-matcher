@@ -1,9 +1,10 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { atomSectors, defaultPolyElements, polyCenterElements, type PolyCenter, type PolyMode, type ViewOptions } from "../lib/scene";
 import type { Crystal, Vec3 } from "../lib/structure";
 import type { BondTable } from "../lib/bonding";
 import type { ViewDir } from "./Viewer";
-import { hexRgb, rgbHex } from "../lib/elementColors";
+import { PALETTE, hexRgb, hsvRgb, rgbHex, rgbHsv } from "../lib/elementColors";
+import { elementColor } from "../lib/data";
 import { rgbCss } from "../lib/format";
 import { useElementColors } from "./ElementColors";
 import { useT } from "../i18n";
@@ -22,6 +23,7 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
   const { colors, colorOf, setColor, resetColors } = useElementColors();
   const els = [...new Set(crystal.sites.map((s) => s.element))];
   const customised = els.filter((el) => colors[el]);
+  const [picking, setPicking] = useState<string | null>(null);
   const mixed = crystal.positions.some((p) => atomSectors(crystal, p.index).length > 1);
   const centerEls = polyCenterElements(crystal, ox, view.polyCenter);
   const setCenter = (c: PolyCenter) =>
@@ -48,7 +50,7 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
         </button>
       </div>
 
-      <details className="viewmenu">
+      <details className="viewmenu" onToggle={(e) => !(e.currentTarget as HTMLDetailsElement).open && setPicking(null)}>
         <summary className="chip">{t("view.menu")}</summary>
         <div className="viewmenu-body">
           <fieldset>
@@ -166,20 +168,18 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
             <legend>{t("view.colors")}</legend>
             <div className="chips">
               {els.map((el) => (
-                <span key={el} className={`colorchip ${colors[el] ? "is-custom" : ""}`}>
-                  <label htmlFor={`color-${el}`} title={t("view.colors.pick", { el })}>
-                    <input
-                      id={`color-${el}`}
-                      type="color"
-                      value={rgbHex(colorOf(el))}
-                      aria-label={t("view.colors.pick", { el })}
-                      onChange={(e) => {
-                        const c = hexRgb(e.target.value);
-                        if (c) setColor(el, c);
-                      }}
-                    />
+                <span key={el} className={`colorchip ${colors[el] ? "is-custom" : ""} ${picking === el ? "is-open" : ""}`}>
+                  <button
+                    className="colorchip-pick"
+                    id={`color-${el}`}
+                    aria-expanded={picking === el}
+                    aria-haspopup="dialog"
+                    title={t("view.colors.pick", { el })}
+                    onClick={() => setPicking((p) => (p === el ? null : el))}
+                  >
+                    <i style={{ background: rgbCss(colorOf(el)) }} />
                     {el}
-                  </label>
+                  </button>
                   {colors[el] && (
                     <button className="colorchip-reset" onClick={() => setColor(el, null)} aria-label={t("view.colors.resetOne", { el })} title={t("view.colors.resetOne", { el })} id={`color-reset-${el}`}>
                       ×
@@ -188,7 +188,6 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
                 </span>
               ))}
             </div>
-            <p className="muted small">{t("view.colors.hint")}</p>
             {customised.length > 0 && (
               <button className="btn btn-ghost btn-small" onClick={() => resetColors(customised)} id="color-reset-all">
                 {t("view.colors.reset")}
@@ -196,7 +195,170 @@ export default function ViewControls({ view, setView, onViewDir, crystal, ox, bo
             )}
           </fieldset>
         </div>
+        {picking && els.includes(picking) && (
+          <ColorPopover
+            el={picking}
+            value={rgbHex(colorOf(picking))}
+            defaultValue={rgbHex(elementColor(picking))}
+            onPick={(hex) => {
+              const c = hexRgb(hex);
+              if (c) setColor(picking, c);
+            }}
+            onDefault={() => setColor(picking, null)}
+            onClose={() => setPicking(null)}
+          />
+        )}
       </details>
     </>
+  );
+}
+
+/**
+ * Colour pop-up of one element (#74): a grid of template colours, or any colour from a saturation–value
+ * square, a hue slider and a hex field. Changes apply at once; Escape, × or a click outside closes it.
+ */
+export function ColorPopover({ el, value, defaultValue, onPick, onDefault, onClose }: { el: string; value: string; defaultValue: string; onPick: (hex: string) => void; onDefault: () => void; onClose: () => void }) {
+  const t = useT();
+  const [mode, setMode] = useState<"template" | "custom">("template");
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (ref.current?.contains(target as Node) || target?.closest?.(".colorchip-pick")) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", down);
+    return () => document.removeEventListener("pointerdown", down);
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      className="colorpop"
+      id="color-popover"
+      role="dialog"
+      aria-label={t("view.colors.palette", { el })}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <div className="palette-head">
+        <span>{t("view.colors.palette", { el })}</span>
+        <button className="colorchip-reset" onClick={onClose} aria-label={t("common.close")} title={t("common.close")} id="color-popover-close">
+          ×
+        </button>
+      </div>
+      <div className="seg small" role="radiogroup" aria-label={t("view.colors.palette", { el })}>
+        {(["template", "custom"] as const).map((m) => (
+          <button key={m} role="radio" aria-checked={mode === m} className={mode === m ? "is-on" : ""} onClick={() => setMode(m)} id={`color-mode-${m}`}>
+            {t(m === "template" ? "view.colors.template" : "view.colors.custom")}
+          </button>
+        ))}
+      </div>
+      {mode === "template" ? (
+        <div className="palette-grid">
+          {PALETTE.flat().map((hex) => (
+            <button key={hex} className={`swatch ${hex === value ? "is-on" : ""}`} style={{ background: hex }} onClick={() => onPick(hex)} aria-label={hex} aria-pressed={hex === value} title={hex} />
+          ))}
+        </div>
+      ) : (
+        <CustomColor value={value} onPick={onPick} />
+      )}
+      <div className="palette-foot">
+        <button className={`palette-default ${value === defaultValue ? "is-on" : ""}`} onClick={onDefault} id="color-default">
+          <i style={{ background: defaultValue }} />
+          {t("view.colors.default")}
+        </button>
+        <span className="mono small">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Any colour: saturation (x) and value (y) on a square for the hue of the slider, or typed as #rrggbb. */
+function CustomColor({ value, onPick }: { value: string; onPick: (hex: string) => void }) {
+  const t = useT();
+  const [hsv, setHsvState] = useState(() => rgbHsv(hexRgb(value) ?? [0, 0, 0]));
+  // the latest HSV for handlers that fire faster than React re-renders (key repeat, pointer moves)
+  const cur = useRef(hsv);
+  const setHsv = (x: [number, number, number]) => {
+    cur.current = x;
+    setHsvState(x);
+  };
+  const [text, setText] = useState(value);
+  // follow changes made elsewhere (the default button), but not the rounding of our own picks
+  const own = useRef(value);
+  useEffect(() => {
+    if (value !== own.current) {
+      own.current = value;
+      setHsv(rgbHsv(hexRgb(value) ?? [0, 0, 0]));
+      setText(value);
+    }
+  }, [value]);
+  const apply = (h: number, s: number, v: number) => {
+    setHsv([h, s, v]);
+    const hex = rgbHex(hsvRgb(h, s, v));
+    own.current = hex;
+    setText(hex);
+    onPick(hex);
+  };
+  const [h, s, v] = hsv;
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  const fromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    apply(cur.current[0], clamp((e.clientX - r.left) / r.width), clamp(1 - (e.clientY - r.top) / r.height));
+  };
+  return (
+    <div className="custom-color">
+      <div
+        className="sv-square"
+        style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${h} 100% 50%))` }}
+        role="slider"
+        tabIndex={0}
+        aria-label={t("view.colors.sv")}
+        aria-valuetext={`${Math.round(s * 100)}%, ${Math.round(v * 100)}%`}
+        id="color-sv"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          fromPointer(e);
+        }}
+        onPointerMove={(e) => e.buttons & 1 && fromPointer(e)}
+        onKeyDown={(e) => {
+          const d = e.shiftKey ? 0.1 : 0.02;
+          const step: Record<string, [number, number]> = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, d], ArrowDown: [0, -d] };
+          const m = step[e.key];
+          if (!m) return;
+          e.preventDefault();
+          const [ch, cs, cv] = cur.current;
+          apply(ch, clamp(cs + m[0]), clamp(cv + m[1]));
+        }}
+      >
+        <i style={{ left: `${s * 100}%`, top: `${(1 - v) * 100}%`, background: value }} />
+      </div>
+      <input className="hue" type="range" min={0} max={360} step={1} value={Math.round(h)} aria-label={t("view.colors.hue")} id="color-hue" onChange={(e) => apply(+e.target.value, cur.current[1], cur.current[2])} />
+      <label className="field-inline" htmlFor="color-hex">
+        <i className="hex-preview" style={{ background: value }} />
+        <input
+          id="color-hex"
+          className="mono"
+          value={text}
+          spellCheck={false}
+          maxLength={7}
+          aria-label={t("view.colors.hex")}
+          onChange={(e) => {
+            setText(e.target.value);
+            const c = hexRgb(e.target.value);
+            if (c) {
+              const hex = rgbHex(c);
+              own.current = hex;
+              setHsv(rgbHsv(c));
+              onPick(hex);
+            }
+          }}
+        />
+      </label>
+    </div>
   );
 }
