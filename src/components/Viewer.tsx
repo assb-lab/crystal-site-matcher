@@ -39,6 +39,9 @@ interface Ctx {
   extent: number;
   axes: { a: Vec3; b: Vec3; c: Vec3 };
   raf: number;
+  /** Structure whose default view this context's camera has been given. A recreated context (React may
+   * mount the effect twice) starts without one, so its camera is framed again instead of staying at the origin. */
+  framed: string | null;
 }
 
 const FOV = 24;
@@ -75,7 +78,6 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
   const overlayRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<Ctx | null>(null);
-  const lastStructure = useRef<string>("");
   const pickRef = useRef(onPick);
   const describeRef = useRef(describe);
   pickRef.current = onPick;
@@ -137,6 +139,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
       extent: 10,
       axes: { a: [1, 0, 0], b: [0, 1, 0], c: [0, 0, 1] },
       raf: 0,
+      framed: null,
     };
     ctxRef.current = ctx;
 
@@ -326,8 +329,8 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
     });
 
     ctx.extent = spec.extent;
-    if (lastStructure.current !== structureId) {
-      lastStructure.current = structureId;
+    if (ctx.framed !== structureId) {
+      ctx.framed = structureId;
       setView(ctx, "reset");
     }
   }, [spec, structureId]);
