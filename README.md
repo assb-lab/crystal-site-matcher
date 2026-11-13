@@ -4,6 +4,8 @@ CIF ファイルの結晶構造で、あるサイトのイオンを別のイオ�
 
 ソースコード: [Crystal Site Matcher（GitHub）](https://github.com/assb-lab/crystal-site-matcher)。アプリ上部のテーマ切り替えの右側にある GitHub アイコンから新しいタブで開けます。
 
+GitHub Pages: [アプリを開く](https://assb-lab.github.io/crystal-site-matcher/)。`main` にコミットされた `dist/` を GitHub Actions で公開します。初回はリポジトリの Settings → Pages → Build and deployment → Source を「GitHub Actions」に設定し、必要に応じて Actions の「Deploy GitHub Pages」を手動実行してください。
+
 ## 使い方
 
 初めて開いたときは、できることと基本操作を 6 ページで説明する案内が表示されます（「スキップ」で閉じられます）。表示済みかどうかはブラウザの localStorage に保存し、あとからは右上の「?」ボタンで開き直せます。
