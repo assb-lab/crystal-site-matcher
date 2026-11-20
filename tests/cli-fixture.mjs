@@ -80,6 +80,19 @@ try {
   assert.equal(json.units.d_mobile, 'Å');
   const noHops = JSON.parse(x.toJson(r, { version: 't', mobile: undefined, hopCutoff: 4, grid: null, hops: false }));
   assert.equal(noHops.structures[0].hops, undefined);
+  // non-finite numbers are null in JSON, not 0 (#82)
+  const nanSite = { kind: 'interstitial', E: 0.1, frac: [0.5, NaN, 0], nearest: '', dNearest: NaN, curvature: [1, 2, Infinity] };
+  const nanJson = JSON.parse(x.toJson({ records: [{ ...r.records[0], sites: [nanSite] }], errors: [], warnings: [] }, { version: 't', mobile: undefined, hopCutoff: 4, grid: 0.2, hops: false }));
+  assert.deepEqual(nanJson.structures[0].sites[0], { kind: 'interstitial', E: 0.1, frac: [0.5, null, 0], nearest: '', dNearest: null, curvature: [1, 2, null] });
+  // a requested mobile ion that is missing: a warning, and the record says none (#82)
+  const na = await x.extractFromText(lco, 'LiCoO2.cif', { grid: 0.3, mobile: 'Na', oxOverride: { co: 2 } });
+  assert.equal(na.records[0].mobile, null);
+  assert.equal(na.records[0].values.mobile, '—');
+  assert.equal(na.records[0].hops.length, 0);
+  assert.equal(na.records[0].sites.length, 0);
+  assert.match(na.warnings[0].message, /mobile ion Na is not in the structure/);
+  assert.deepEqual(na.oxUsed, []);
+  assert.deepEqual(ox.oxUsed.sort(), ['Co', 'Li1']);
 } finally {
   await server.close();
 }

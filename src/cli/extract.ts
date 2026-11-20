@@ -66,13 +66,18 @@ export interface ExtractError {
 export interface ExtractResult {
   records: StructureRecord[];
   errors: ExtractError[];
+  /** problems that did not stop the calculation (e.g. a requested mobile ion that is not in the structure) */
+  warnings: ExtractError[];
+  /** keys of `oxOverride` that matched a site label or element of at least one structure */
+  oxUsed?: string[];
 }
 
 const GRID_KEYS = FEATURE_DEFS.filter((d) => d.group === "grid").map((d) => d.key);
 
 /** Extract features of every data block with atomic coordinates in one CIF file. */
 export async function extractFromText(text: string, file: string, opts: ExtractOptions = {}): Promise<ExtractResult> {
-  const out: ExtractResult = { records: [], errors: [] };
+  const out: ExtractResult = { records: [], errors: [], warnings: [], oxUsed: [] };
+  const oxUsed = new Set<string>();
   let blocks;
   try {
     blocks = parseCif(text).filter((b) => b.loops.some((l) => l.tags.includes("_atom_site_fract_x")));
@@ -88,7 +93,13 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
   const grid = opts.grid === undefined ? DEFAULT_GRID_RES : opts.grid;
   for (const block of blocks) {
     try {
-      const s = prepareStructure(block, { oxOverride: opts.oxOverride, mobile: opts.mobile });
+      let s = prepareStructure(block, { oxOverride: opts.oxOverride, mobile: opts.mobile });
+      for (const k of Object.keys(opts.oxOverride ?? {})) if (s.crystal.sites.some((x) => x.label === k || x.element === k)) oxUsed.add(k);
+      // a requested mobile ion that is not in the structure: computed and reported as none (#82)
+      if (s.mobile && !hasMobile(s)) {
+        out.warnings.push({ file, block: block.name, message: `mobile ion ${s.mobile} is not in the structure; mobile-ion features and hops are left empty` });
+        s = { ...s, mobile: null };
+      }
       const st = staticStage(s, hopCutoff);
       const values: Record<string, FeatureValue> = { ...st.values };
       for (const k of GRID_KEYS) values[k] ??= null;
@@ -122,6 +133,7 @@ export async function extractFromText(text: string, file: string, opts: ExtractO
       out.errors.push({ file, block: block.name, message: tError(tEn, e) });
     }
   }
+  out.oxUsed = [...oxUsed];
   return out;
 }
 
@@ -193,8 +205,9 @@ export interface JsonSettings {
   sites?: boolean;
 }
 
-const round = (v: number) => +num(v);
-const roundVec = (v: Vec3) => v.map((x) => +coord(x));
+// non-finite values become null (+"" would be 0)
+const round = (v: number) => (Number.isFinite(v) ? +num(v) : null);
+const roundVec = (v: Vec3) => v.map((x) => (Number.isFinite(x) ? +coord(x) : null));
 
 export function toJson(result: ExtractResult, settings: JsonSettings): string {
   const doc = {
@@ -221,6 +234,7 @@ export function toJson(result: ExtractResult, settings: JsonSettings): string {
         : {}),
     })),
     errors: result.errors,
+    warnings: result.warnings,
   };
   return JSON.stringify(doc, null, 2) + "\n";
 }
