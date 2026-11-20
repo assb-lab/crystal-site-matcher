@@ -1,7 +1,11 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useT } from "../i18n";
 
-/** Native <dialog> modal: focus trapping, Esc and top-layer stacking come from the browser. */
+/**
+ * Native <dialog> modal: focus trapping, Esc and top-layer stacking come from the browser.
+ * Mark the element to focus on open with `data-autofocus`: React's autoFocus runs before showModal(),
+ * which then moves focus to the first focusable element (the ✕ button).
+ */
 export default function Modal({
   open,
   onClose,
@@ -22,7 +26,10 @@ export default function Modal({
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
+    if (open && !d.open) {
+      d.showModal();
+      d.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    }
     if (!open && d.open) d.close();
   }, [open]);
   return (

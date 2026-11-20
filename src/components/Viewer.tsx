@@ -33,6 +33,9 @@ interface Ctx {
   gizmoArrows: THREE.Group;
   cellMat: THREE.LineBasicMaterial;
   haloMat: THREE.MeshBasicMaterial;
+  /** Highlighted-polyhedron glow and edge colours, shared with the built materials so a theme change recolours them. */
+  selectColor: THREE.Color;
+  selectEdgeColor: THREE.Color;
   pathMats: LineMaterial[]; // resize both band and dashes; animate and recolour only dashes
   labels: { el: HTMLDivElement; pos: THREE.Vector3 }[];
   axisLabels: { el: HTMLSpanElement; dir: THREE.Vector3 }[];
@@ -133,6 +136,8 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
       gizmoArrows,
       cellMat,
       haloMat,
+      selectColor: new THREE.Color(0xffb000),
+      selectEdgeColor: new THREE.Color(0xb06f00),
       pathMats: [],
       labels: [],
       axisLabels: [],
@@ -145,8 +150,11 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
 
     const applyTheme = () => {
       renderer.setClearColor(new THREE.Color(cssVar("--viewer-bg", "#f7f8fa")), 1);
-      cellMat.color = new THREE.Color(cssVar("--cell-line", "#3a4150"));
-      haloMat.color = new THREE.Color(cssVar("--select", "#ffb000"));
+      // set in place: the built cell lines, halo and highlighted polyhedra share these Color objects
+      cellMat.color.set(cssVar("--cell-line", "#3a4150"));
+      haloMat.color.set(cssVar("--select", "#ffb000"));
+      ctx.selectColor.set(cssVar("--select", "#ffb000"));
+      ctx.selectEdgeColor.set(cssVar("--select-edge", "#b06f00"));
       applyHopPathTheme(ctx.pathMats, new THREE.Color(cssVar("--ink", "#1a1f2b")));
     };
     applyTheme();
@@ -271,7 +279,15 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
       controls.dispose();
       disposeTree(content);
       disposeTree(gizmoScene);
+      // React may run this effect twice (StrictMode); drop the labels of this context with it
+      for (const l of ctx.labels) l.el.remove();
+      for (const al of ctx.axisLabels) al.el.remove();
+      ctx.labels = [];
+      ctx.axisLabels = [];
       renderer.dispose();
+      // dispose() keeps the WebGL context alive until garbage collection; release it now so that
+      // switching structures does not exhaust the browser's context limit (and kill the thumbnail renderer)
+      renderer.forceContextLoss();
       host.removeChild(renderer.domElement);
       ctxRef.current = null;
     };
@@ -289,7 +305,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
     content.position.set(-spec.center[0], -spec.center[1], -spec.center[2]);
     content.updateMatrixWorld();
 
-    const built = populateContent(content, spec, { halo: ctx.haloMat, cell: ctx.cellMat });
+    const built = populateContent(content, spec, { halo: ctx.haloMat, cell: ctx.cellMat, select: ctx.selectColor, selectEdge: ctx.selectEdgeColor });
     ctx.atomMesh = built.atomMesh;
     ctx.atomKeys = built.atomKeys;
     ctx.pathMats = built.pathMats;
@@ -353,7 +369,7 @@ export default function Viewer({ spec, structureId, viewCmd, onPick, describe }:
 export function populateContent(
   content: THREE.Group,
   spec: SceneSpec,
-  colors: { halo: THREE.MeshBasicMaterial; cell: THREE.LineBasicMaterial },
+  colors: { halo: THREE.MeshBasicMaterial; cell: THREE.LineBasicMaterial; select?: THREE.Color; selectEdge?: THREE.Color },
 ): { atomMesh: THREE.InstancedMesh; atomKeys: string[]; pathMats: LineMaterial[] } {
   // atoms
   const sphere = new THREE.SphereGeometry(1, 28, 18);
@@ -377,6 +393,8 @@ export function populateContent(
   const sel = spec.atoms.find((a) => a.key === spec.selectedKey);
   if (sel) {
     const halo = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), colors.halo.clone());
+    // share the colour (like the cell lines) so a theme change recolours the halo
+    halo.material.color = colors.halo.color;
     halo.position.set(...sel.xyz);
     halo.scale.setScalar(sel.radius * 1.55 + 0.12);
     halo.renderOrder = 3;
@@ -440,19 +458,20 @@ export function populateContent(
       depthWrite: false,
       roughness: 0.65,
       metalness: 0,
-      emissive: p.highlight ? new THREE.Color(cssVar("--select", "#ffb000")) : new THREE.Color(0x000000),
+      emissive: new THREE.Color(0x000000),
       emissiveIntensity: p.highlight ? 0.25 : 0,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     });
+    // the shared highlight colour follows theme changes
+    if (p.highlight) mat.emissive = colors.select ?? new THREE.Color(cssVar("--select", "#ffb000"));
     const pm = new THREE.Mesh(geom, mat);
     pm.renderOrder = 2;
     content.add(pm);
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(geom, 8),
-      new THREE.LineBasicMaterial({ color: p.highlight ? new THREE.Color(cssVar("--select-edge", "#b06f00")) : srgb(p.color, 0.5), transparent: true, opacity: 0.9 }),
-    );
+    const edgeMat = new THREE.LineBasicMaterial({ color: srgb(p.color, 0.5), transparent: true, opacity: 0.9 });
+    if (p.highlight) edgeMat.color = colors.selectEdge ?? new THREE.Color(cssVar("--select-edge", "#b06f00"));
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geom, 8), edgeMat);
     edges.renderOrder = 2;
     content.add(edges);
   }
@@ -671,6 +690,11 @@ let thumbCtx: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE
 
 export function renderThumbnail(spec: SceneSpec, size = 176): string | null {
   try {
+    // the browser may drop this context (e.g. too many live contexts); then build a new renderer
+    if (thumbCtx?.renderer.getContext().isContextLost()) {
+      thumbCtx.renderer.dispose();
+      thumbCtx = null;
+    }
     if (!thumbCtx) {
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
       renderer.setPixelRatio(1);

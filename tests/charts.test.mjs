@@ -4,6 +4,7 @@ import test from 'node:test';
 
 for (const [mode, name] of [
   ['ticks', 'Chart axes terminate for symmetry-equivalent and ordinary values'],
+  ['many', 'Line chart with many long series (compare-mode XRD) renders without a stack overflow'],
   ['lco', 'Actual LiCoO2 CIF renders the features panel, all nine hops and the hop list'],
 ]) {
   test(name, () => {

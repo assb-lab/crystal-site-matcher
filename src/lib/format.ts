@@ -13,8 +13,12 @@ export function ionLabel(el: string, ox: number | null | undefined, spin?: strin
 
 export const fmt = (x: number | null | undefined, d = 3) => (x === null || x === undefined || !Number.isFinite(x) ? "—" : x.toFixed(d));
 
-export const pct = (x: number | null | undefined, d = 1) =>
-  x === null || x === undefined || !Number.isFinite(x) ? "—" : `${x > 0 ? "+" : x < 0 ? "−" : "±"}${Math.abs(x * 100).toFixed(d)}%`;
+/** Signed percentage; the sign follows the rounded value, so −0.2 % at d = 0 reads "0%", not "−0%". */
+export const pct = (x: number | null | undefined, d = 1) => {
+  if (x === null || x === undefined || !Number.isFinite(x)) return "—";
+  const s = Math.abs(x * 100).toFixed(d);
+  return +s === 0 ? `${s}%` : `${x > 0 ? "+" : "−"}${s}%`;
+};
 
 export const signed = (x: number, d = 0) => (x > 0 ? `+${x.toFixed(d)}` : x < 0 ? `−${Math.abs(x).toFixed(d)}` : "0");
 

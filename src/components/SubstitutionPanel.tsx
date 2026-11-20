@@ -234,7 +234,7 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
               </select>
             </label>
           )}
-          <button className="btn btn-primary" onClick={() => setSelected({ el: cEl, ox: cOx, spin: spinsFor(cEl, cOx).includes(cSpin) ? cSpin : (spinsFor(cEl, cOx)[0] ?? "") })} id="eval-ion">
+          <button className="btn btn-primary" onClick={() => openDetail({ el: cEl, ox: cOx, spin: spinsFor(cEl, cOx).includes(cSpin) ? cSpin : (spinsFor(cEl, cOx)[0] ?? "") })} id="eval-ion">
             {t("subst.evaluate")}
           </button>
         </div>
@@ -312,9 +312,9 @@ export default function SubstitutionPanel({ analysis: a, crystal, onSelectGroup 
                 <tr
                   key={r.key}
                   className={`clickable ${selected && candKey(selected) === r.key ? "is-selected" : ""} ${r.el === a.host.el && r.ox === a.host.ox ? "is-host" : ""}`}
-                  onClick={() => setSelected(r)}
+                  onClick={() => openDetail(r)}
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && setSelected(r)}
+                  onKeyDown={(e) => e.key === "Enter" && openDetail(r)}
                 >
                   <td className="num mono muted">{i + 1}</td>
                   <td>
@@ -530,7 +530,9 @@ function RadiusMap({
   onSelect: (r: CandidateResult) => void;
 }) {
   const t = useT();
-  const ref = a.rSite ?? a.rHost?.r ?? null;
+  // only a positive radius can centre the map (r_site of an H⁺ site can be ≤ 0)
+  const refIsSite = a.rSite !== null && a.rSite > 0;
+  const ref = refIsSite ? a.rSite : a.rHost && a.rHost.r > 0 ? a.rHost.r : null;
   if (ref === null) return <p className="muted small">{t("subst.noRef")}</p>;
   const lo = Math.max(0, ref * (1 - 3 * tol) - 0.05),
     hi = ref * (1 + 3 * tol) + 0.05;
@@ -561,7 +563,7 @@ function RadiusMap({
         <rect x={X(ref * (1 - tol))} y={top - 8} width={X(ref * (1 + tol)) - X(ref * (1 - tol))} height={charges.length * rowH + 8} className="rmap-band1" />
         <line x1={X(ref)} x2={X(ref)} y1={top - 14} y2={top + charges.length * rowH} className="rmap-ref" />
         <text x={X(ref)} y={top - 16} textAnchor="middle" className="rmap-reflabel">
-          r_site {ref.toFixed(3)}
+          {refIsSite ? "r_site" : "r_host"} {ref.toFixed(3)}
         </text>
         {charges.map((q, i) => {
           const y = top + i * rowH + rowH / 2;
