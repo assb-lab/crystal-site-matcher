@@ -1,12 +1,12 @@
 // csm-features: compute Crystal Site Matcher features for CIF files from the command line.
 // Built into dist/csm-features.mjs (pnpm build) — a single file that needs only Node.js.
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { availableParallelism } from "node:os";
 import { parseArgs } from "node:util";
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 import { DEFAULT_GRID_RES, DEFAULT_HOP_CUTOFF } from "../lib/pipeline";
-import { ExtractOptions, ExtractResult, delimited, extractFromText, featureList, featureRows, hopRows, siteRows, toJson } from "./extract";
+import { ExtractError, ExtractOptions, ExtractResult, delimited, extractFromText, featureList, featureRows, hopRows, siteRows, toJson } from "./extract";
 
 const VERSION = typeof __CSM_VERSION__ === "string" ? __CSM_VERSION__ : "dev";
 
@@ -24,7 +24,7 @@ Output
   -o, --output <file>       feature table (default: standard output)
   -f, --format <fmt>        csv | tsv | json (default: from --output extension, else csv)
       --hops-output <file>  hop table for CSV/TSV (default: <output>.hops.<ext> next to
-                            --output; JSON embeds hops in each structure)
+                            --output, header only when empty; JSON embeds hops in each structure)
       --no-hops             do not write hops
       --sites-output <file> stable-site table for CSV/TSV (default: <output>.sites.<ext>;
                             JSON embeds sites in each structure)
@@ -32,7 +32,8 @@ Output
       --list-features       print feature keys, units and descriptions, then exit
 
 Calculation
-  -m, --mobile <El|none>    mobile ion (default: automatic, see above)
+  -m, --mobile <El|none>    mobile ion (default: automatic, see above; a structure without it
+                            gets a warning and no mobile ion)
       --ox <list>           oxidation states by element or site label, e.g. "Co=3,O1=-2"
                             (repeatable; default: from the CIF, else charge balance)
       --hop-cutoff <Å>      maximum mobile–mobile hop distance (default ${DEFAULT_HOP_CUTOFF})
@@ -61,14 +62,14 @@ interface Task {
   label: string;
 }
 
+const failed = (file: string, message: string): ExtractResult => ({ records: [], errors: [{ file, block: null, message }], warnings: [] });
+
 async function runTask(t: Task, opts: ExtractOptions): Promise<ExtractResult> {
-  let text: string;
   try {
-    text = readFileSync(t.path, "utf8");
+    return await extractFromText(readFileSync(t.path, "utf8"), t.label, opts);
   } catch (e) {
-    return { records: [], errors: [{ file: t.label, block: null, message: (e as Error).message }] };
+    return failed(t.label, (e as Error)?.message ?? String(e));
   }
-  return extractFromText(text, t.label, opts);
 }
 
 // ---------------------------------------------------------------------------
@@ -88,14 +89,43 @@ if (!isMainThread) {
 
 const CIF_EXT = /\.(cif|mcif)$/i;
 
-function collectInputs(args: string[], recursive: boolean): Task[] {
+/**
+ * CIF files named on the command line or found in directories. Entries that cannot be read (broken links,
+ * directories without permission) become errors of their own instead of stopping the run (#82); under -r,
+ * each directory is visited once by its real path, so symbolic-link loops end.
+ */
+function collectInputs(args: string[], recursive: boolean, warn: (s: string) => void): { tasks: Task[]; errors: ExtractError[] } {
   const out: Task[] = [];
-  const walk = (dir: string, depth: number) => {
-    for (const name of readdirSync(dir).sort()) {
+  const errors: ExtractError[] = [];
+  const visited = new Set<string>();
+  const message = (e: unknown) => (e as Error)?.message ?? String(e);
+  const walk = (dir: string) => {
+    let names: string[];
+    try {
+      const real = realpathSync(dir);
+      if (visited.has(real)) {
+        warn(`warning: ${dir}: directory already visited (symbolic-link loop?); skipped`);
+        return;
+      }
+      visited.add(real);
+      names = readdirSync(dir).sort();
+    } catch (e) {
+      errors.push({ file: dir, block: null, message: `cannot read directory: ${message(e)}` });
+      return;
+    }
+    for (const name of names) {
       const p = join(dir, name);
-      const st = statSync(p);
+      let st;
+      try {
+        st = statSync(p);
+      } catch (e) {
+        // a broken link to a CIF is a file we could not read; anything else is only noted
+        if (CIF_EXT.test(name)) errors.push({ file: p, block: null, message: message(e) });
+        else warn(`warning: ${p}: skipped (${message(e)})`);
+        continue;
+      }
       if (st.isDirectory()) {
-        if (recursive) walk(p, depth + 1);
+        if (recursive) walk(p);
       } else if (st.isFile() && CIF_EXT.test(name)) out.push({ id: out.length, path: p, label: p });
     }
   };
@@ -106,10 +136,10 @@ function collectInputs(args: string[], recursive: boolean): Task[] {
     } catch {
       throw new UsageError(`no such file or directory: ${a}`);
     }
-    if (st.isDirectory()) walk(a, 0);
+    if (st.isDirectory()) walk(a);
     else out.push({ id: out.length, path: a, label: a });
   }
-  return out;
+  return { tasks: out, errors };
 }
 
 function parseOx(list: string[]): Record<string, number> | undefined {
@@ -150,30 +180,47 @@ async function runAll(tasks: Task[], opts: ExtractOptions, jobs: number, log: (s
   }
   const queue = [...tasks];
   const started = new Map<number, number>();
-  await Promise.all(
-    Array.from({ length: jobs }, () => {
+  // A worker that dies (out of memory, an uncaught error) costs only the file it was on: that file
+  // becomes an error and a fresh worker takes the rest of the queue (#82). Each death uses up one file.
+  const runWorker = (): Promise<void> =>
+    new Promise<void>((resolve) => {
       const w = new Worker(new URL(import.meta.url), { workerData: opts });
-      return new Promise<void>((resolve, reject) => {
-        const next = () => {
-          const t = queue.shift();
-          if (!t) {
-            w.terminate().then(() => resolve(), reject);
-            return;
-          }
-          started.set(t.id, performance.now());
-          w.postMessage(t);
-        };
-        w.on("message", (m) => {
-          const { id, result } = m as { id: number; result: ExtractResult };
-          results[id] = result;
-          report(tasks[id], result, performance.now() - (started.get(id) ?? 0));
-          next();
-        });
-        w.on("error", reject);
+      let current: Task | undefined;
+      let finished = false;
+      const next = () => {
+        current = queue.shift();
+        if (!current) {
+          finished = true;
+          w.terminate().then(() => resolve(), () => resolve());
+          return;
+        }
+        started.set(current.id, performance.now());
+        w.postMessage(current);
+      };
+      const died = (why: string) => {
+        if (finished) return;
+        finished = true;
+        const t = current;
+        current = undefined;
+        if (t) {
+          results[t.id] = failed(t.label, `worker stopped: ${why}`);
+          report(t, results[t.id], performance.now() - (started.get(t.id) ?? 0));
+        }
+        w.terminate().catch(() => undefined);
+        runWorker().then(resolve);
+      };
+      w.on("message", (m) => {
+        const { id, result } = m as { id: number; result: ExtractResult };
+        results[id] = result;
+        current = undefined;
+        report(tasks[id], result, performance.now() - (started.get(id) ?? 0));
         next();
       });
-    }),
-  );
+      w.on("error", (e) => died(e?.message ?? String(e)));
+      w.on("exit", (code) => died(`exit code ${code}`));
+      next();
+    });
+  await Promise.all(Array.from({ length: jobs }, runWorker));
   return results;
 }
 
@@ -239,14 +286,20 @@ async function main(argv: string[]): Promise<number> {
     hopCutoff: positiveNumber(v["hop-cutoff"], "hop-cutoff", DEFAULT_HOP_CUTOFF),
     grid: v["no-grid"] ? null : positiveNumber(v.grid, "grid", DEFAULT_GRID_RES),
   };
-  const tasks = collectInputs(positionals, !!v.recursive);
-  if (!tasks.length) throw new UsageError("no CIF files found");
-  const jobs = Math.max(1, Math.min(tasks.length, Math.floor(positiveNumber(v.jobs, "jobs", availableParallelism()))));
+  const warn = (s: string) => void process.stderr.write(s + "\n");
+  const { tasks, errors: inputErrors } = collectInputs(positionals, !!v.recursive, warn);
+  if (!tasks.length && !inputErrors.length) throw new UsageError("no CIF files found");
+  const jobs = Math.max(1, Math.min(Math.max(1, tasks.length), Math.floor(positiveNumber(v.jobs, "jobs", availableParallelism()))));
   const log = v.quiet ? () => undefined : (s: string) => void process.stderr.write(s + "\n");
 
   const t0 = performance.now();
   const parts = await runAll(tasks, opts, jobs, log);
-  const result: ExtractResult = { records: parts.flatMap((p) => p.records), errors: parts.flatMap((p) => p.errors) };
+  const result: ExtractResult = { records: parts.flatMap((p) => p.records), errors: [...inputErrors, ...parts.flatMap((p) => p.errors)], warnings: parts.flatMap((p) => p.warnings) };
+  // --ox keys that no structure has as a site label or element (symbols and labels are case-sensitive)
+  if (opts.oxOverride && result.records.length) {
+    const used = new Set(parts.flatMap((p) => p.oxUsed ?? []));
+    for (const k of Object.keys(opts.oxOverride)) if (!used.has(k)) result.warnings.push({ file: "--ox", block: null, message: `"${k}" matches no site label or element (case-sensitive); ignored` });
+  }
 
   const wantHops = !v["no-hops"];
   let text: string;
@@ -259,7 +312,8 @@ async function main(argv: string[]): Promise<number> {
   let hopNote = "";
   if (fmt !== "json" && wantHops) {
     const anyHops = result.records.some((r) => r.mobile);
-    const hopsOut = (v["hops-output"] as string | undefined) ?? (output && anyHops ? sidePathFor(output, "hops", `.${fmt}`) : undefined);
+    // always written next to --output (header only when empty), so no stale table from an earlier run remains
+    const hopsOut = (v["hops-output"] as string | undefined) ?? (output ? sidePathFor(output, "hops", `.${fmt}`) : undefined);
     if (hopsOut) {
       writeFileSync(hopsOut, delimited(hopRows(result.records), sep));
       hopNote = `, hops → ${hopsOut}`;
@@ -267,13 +321,14 @@ async function main(argv: string[]): Promise<number> {
   }
   if (fmt !== "json" && !v["no-sites"]) {
     const anySites = result.records.some((r) => r.sites.length);
-    const sitesOut = (v["sites-output"] as string | undefined) ?? (output && anySites ? sidePathFor(output, "sites", `.${fmt}`) : undefined);
+    const sitesOut = (v["sites-output"] as string | undefined) ?? (output ? sidePathFor(output, "sites", `.${fmt}`) : undefined);
     if (sitesOut) {
       writeFileSync(sitesOut, delimited(siteRows(result.records), sep));
       hopNote += `, sites → ${sitesOut}`;
     } else if (anySites) log("note: stable sites were not written (standard output); use --output or --sites-output to save them");
   }
 
+  for (const w of result.warnings) warn(`warning: ${w.file}${w.block ? ` [${w.block}]` : ""}: ${w.message}`);
   for (const e of result.errors) process.stderr.write(`error: ${e.file}${e.block ? ` [${e.block}]` : ""}: ${e.message}\n`);
   const n = result.records.length;
   log(`${n} structure${n === 1 ? "" : "s"} from ${tasks.length} file${tasks.length === 1 ? "" : "s"} in ${((performance.now() - t0) / 1000).toFixed(1)} s${output ? ` → ${basename(output)}` : ""}${hopNote}`);

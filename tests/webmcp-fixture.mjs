@@ -87,6 +87,12 @@ try {
   assert.equal(noGrid.features[0].value, null);
   assert.ok(Math.abs(noGrid.features[1].value - cli.rb_min) < 1e-12);
   assert.match((await call('get_features', { keys: ['nope'] })).error, /Unknown feature keys: nope/);
+  // inherited object properties are not feature keys (#82)
+  assert.match((await call('get_features', { keys: ['toString', '__proto__', 'constructor'] })).error, /Unknown feature keys: toString, __proto__, constructor/);
+  // grid follows the schema: "false" is false, anything else that is not a boolean is an error
+  assert.equal((await call('get_features', { grid: 'false', keys: ['E_1D'] })).features[0].value, null);
+  assert.match((await call('get_features', { grid: 'no', keys: ['E_1D'] })).error, /grid must be true or false/);
+  assert.match((await call('get_features', { grid: 0, keys: ['E_1D'] })).error, /grid must be true or false/);
 
   // hops: the classes of the Features tab
   const hops = await call('get_hops');
@@ -109,6 +115,8 @@ try {
   assert.ok(Math.abs(ranked.candidates[0].score - best.score) < 1e-3);
   assert.ok(ranked.candidates.every((c, i) => i === 0 || c.score <= ranked.candidates[i - 1].score));
   assert.ok((await call('rank_substituents', { site: 'Co1', charge: 'same', limit: 50 })).candidates.every((c) => c.chargeDifference === 0));
+  // an invalid charge filter is an error, not the default (#82)
+  assert.match((await call('rank_substituents', { site: 'Co1', charge: 'bogus' })).error, /charge must be "same", "pm1" or "all"/);
   assert.match((await call('analyze_site', { site: 'Xx9' })).error, /No site "Xx9"\. Sites: Li1, Co1, O1/);
 
   // CIF text, selection, settings and closing
@@ -125,6 +133,13 @@ try {
   const closed = await call('close_structure', { id: lco.id });
   assert.deepEqual(closed.open, [lgps.id, li3n.opened[0].id]);
   assert.match((await call('close_structure', { id: lco.id })).error, /No open structure/);
+  // an empty or missing id names the open structures instead of claiming none is open (#82)
+  const openIds = `${lgps.id}, ${li3n.opened[0].id}`;
+  assert.equal((await call('close_structure', { id: '' })).error, `id is required. Open ones: ${openIds}`);
+  assert.equal((await call('close_structure')).error, `id is required. Open ones: ${openIds}`);
+  assert.equal((await call('get_structure', { id: '' })).error, `No open structure "". Open ones: ${openIds}`);
+  assert.equal((await call('get_structure', { id: 3 })).error, `id must be a string. Open ones: ${openIds}`);
+  assert.deepEqual((await call('list_structures')).structures.map((s) => s.id), [lgps.id, li3n.opened[0].id]);
 
   // registration: one call per tool with an abort signal; the cleanup aborts it and uses unregisterTool when present
   {

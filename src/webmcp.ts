@@ -106,9 +106,11 @@ const siteProp = { type: "string", description: "Site label from get_structure (
 export function buildTools(app: AppBridge): WebMcpTool[] {
   const docOf = (input: Json): Doc => {
     const docs = app.docs();
+    const open = docs.map((x) => x.id).join(", ") || "none";
+    if (input.id !== undefined && input.id !== null && typeof input.id !== "string") throw new ToolError(`id must be a string. Open ones: ${open}`);
     const id = str(input.id) ?? app.activeId();
     const d = docs.find((x) => x.id === id);
-    if (!d) throw new ToolError(id ? `No open structure "${id}". Open ones: ${docs.map((x) => x.id).join(", ") || "none"}` : "No structure is open");
+    if (!d) throw new ToolError(id !== null ? `No open structure "${id}". Open ones: ${open}` : "No structure is open");
     return d;
   };
   const tools: WebMcpTool[] = [
@@ -205,9 +207,12 @@ export function buildTools(app: AppBridge): WebMcpTool[] {
       async execute(input) {
         const d = docOf(input);
         const keys = Array.isArray(input.keys) ? input.keys.filter((k): k is string => typeof k === "string") : null;
-        const unknown = keys?.filter((k) => !FEATURE_BY_KEY[k]) ?? [];
+        // own keys only: "toString", "__proto__" and the like are not features
+        const unknown = keys?.filter((k) => !Object.hasOwn(FEATURE_BY_KEY, k)) ?? [];
         if (unknown.length) throw new ToolError(`Unknown feature keys: ${unknown.join(", ")}`);
-        const values = await computeFeatures(d, input.grid !== false);
+        const grid = input.grid === undefined || input.grid === true || input.grid === "true" ? true : input.grid === false || input.grid === "false" ? false : null;
+        if (grid === null) throw new ToolError("grid must be true or false");
+        const values = await computeFeatures(d, grid);
         const defs = keys ? keys.map((k) => FEATURE_BY_KEY[k]) : FEATURE_DEFS;
         return {
           id: d.id,
@@ -283,7 +288,8 @@ export function buildTools(app: AppBridge): WebMcpTool[] {
         const { g, hostSite } = findGroup(d, str(input.site) ?? "");
         const { bonds } = deriveBonds(d.crystal, d.ox, d.bondSettings);
         const a = analyzeSite(d.crystal, d.ox, bonds, g.positions[0], { kind: d.radiusKind, hostSite });
-        const charge = str(input.charge) ?? "pm1";
+        const charge = input.charge ?? "pm1";
+        if (charge !== "same" && charge !== "pm1" && charge !== "all") throw new ToolError(`charge must be "same", "pm1" or "all"`);
         const limit = Math.min(200, Math.max(1, Math.round(num(input.limit) ?? 20)));
         const ranked = allCandidates(a.host.ox)
           .map((c) => evaluateCandidate(a, c, { sizeTol: 0.15, useBVS: true, useCharge: true }))
@@ -348,7 +354,8 @@ export function buildTools(app: AppBridge): WebMcpTool[] {
       description: "Close an open structure (its view settings are discarded).",
       inputSchema: { type: "object", properties: { id: { type: "string", description: "Structure id from list_structures" } }, required: ["id"] },
       async execute(input) {
-        const d = docOf({ id: str(input.id) ?? "" });
+        if (typeof input.id !== "string" || !input.id) throw new ToolError(`id is required. Open ones: ${app.docs().map((x) => x.id).join(", ") || "none"}`);
+        const d = docOf({ id: input.id });
         app.close(d.id);
         return { closed: d.id, open: app.docs().map((x) => x.id) };
       },
