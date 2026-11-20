@@ -3,8 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
-import test, { after, before } from 'node:test';
-import { build } from 'vite';
+import test from 'node:test';
 
 const run = (args, opts = {}) => spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024, ...opts });
 
@@ -25,20 +24,9 @@ test('built CLI runs directly through its shebang', { skip: (process.platform ==
   assert.match(r.stdout, /^csm-features /);
 });
 
-// The checks below run the CLI built from the current source (not the committed dist/, which may lag
-// behind src/cli in a branch). The build needs the app's notices file, as in pnpm build.
-const NOTICES = 'dist/THIRD_PARTY_LICENSES.txt';
-const noBuild = !existsSync(NOTICES) && 'run pnpm build first';
-let SRC_CLI;
-let buildDir;
-before(async () => {
-  if (noBuild) return;
-  buildDir = mkdtempSync(join(tmpdir(), 'csm-build-'));
-  copyFileSync(NOTICES, join(buildDir, 'THIRD_PARTY_LICENSES.txt'));
-  await build({ configFile: 'vite.cli.config.ts', logLevel: 'silent', build: { outDir: buildDir } });
-  SRC_CLI = join(buildDir, 'csm-features.mjs');
-});
-after(() => buildDir && rmSync(buildDir, { recursive: true, force: true }));
+// The checks below run the committed build (dist/csm-features.mjs): rebuild it with pnpm build after changing src/cli.
+const noBuild = !existsSync(CLI) && 'run pnpm build first';
+const SRC_CLI = CLI;
 
 test('CLI writes features and hops', { skip: noBuild }, () => {
   const CLI = SRC_CLI;
