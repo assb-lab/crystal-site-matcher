@@ -77,6 +77,38 @@ export function niceTicks(lo: number, hi: number, n = 5): number[] {
   return out;
 }
 
+/**
+ * Smallest and largest value of a list, with plain loops: spreading thousands of points
+ * into Math.min/Math.max overflows the call stack (e.g. many XRD patterns in compare mode).
+ */
+export function extent(values: Iterable<number>): [number, number] {
+  let lo = Infinity,
+    hi = -Infinity;
+  for (const v of values) {
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  return [lo, hi];
+}
+
+/** Smallest/largest x and y over every point of every series. */
+function pointsExtent(series: { points: { x: number; y: number }[] }[]) {
+  let xLo = Infinity,
+    xHi = -Infinity,
+    yLo = Infinity,
+    yHi = -Infinity,
+    n = 0;
+  for (const s of series)
+    for (const p of s.points) {
+      n++;
+      if (p.x < xLo) xLo = p.x;
+      if (p.x > xHi) xHi = p.x;
+      if (p.y < yLo) yLo = p.y;
+      if (p.y > yHi) yHi = p.y;
+    }
+  return { n, xLo, xHi, yLo, yHi };
+}
+
 export const fmtTick = (v: number) => {
   const a = Math.abs(v);
   if (a >= 1000) return `${+(v / 1000).toFixed(1)}K`;
@@ -100,12 +132,12 @@ function Tooltip({ tip }: { tip: Tip | null }) {
   );
 }
 
-function Legend({ items }: { items: { label: string; color: string; dash?: boolean }[] }) {
+function Legend({ items }: { items: { id?: string; label: string; color: string; dash?: boolean }[] }) {
   if (items.length < 2) return null;
   return (
     <div className="chart-legend">
-      {items.map((it) => (
-        <span key={it.label}>
+      {items.map((it, i) => (
+        <span key={it.id ?? i}>
           <i className={it.dash ? "dash" : ""} style={{ background: it.dash ? undefined : it.color, borderColor: it.color }} />
           {it.label}
         </span>
@@ -157,17 +189,17 @@ export function LineChart({
     mb = 38;
   const [hx, setHx] = useState<number | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
-  const all = series.flatMap((s) => s.points);
-  const x0 = xDomain?.[0] ?? Math.min(...all.map((p) => p.x)),
-    x1 = xDomain?.[1] ?? Math.max(...all.map((p) => p.x));
-  const yMaxData = Math.max(...all.map((p) => p.y), 0);
-  const y0 = yDomain?.[0] ?? Math.min(0, ...all.map((p) => p.y)),
+  const ext = pointsExtent(series);
+  const x0 = xDomain?.[0] ?? ext.xLo,
+    x1 = xDomain?.[1] ?? ext.xHi;
+  const yMaxData = Math.max(ext.yHi, 0);
+  const y0 = yDomain?.[0] ?? Math.min(0, ext.yLo),
     y1 = yDomain?.[1] ?? (yMaxData > 0 ? yMaxData * 1.08 : 1);
   const X = (x: number) => ml + ((x - x0) / (x1 - x0 || 1)) * (W - ml - mr);
   const Y = (y: number) => mt + (1 - (y - y0) / (y1 - y0 || 1)) * (H - mt - mb);
   const xt = niceTicks(x0, x1, 6),
     yt = niceTicks(y0, y1, 4);
-  if (!all.length)
+  if (!ext.n)
     return (
       <div ref={attach}>
         <p className="muted small">{t("chart.noData")}</p>
@@ -212,7 +244,7 @@ export function LineChart({
 
   return (
     <div className="chart" ref={attach}>
-      <Legend items={series.map((s) => ({ label: s.label, color: s.color, dash: s.dash }))} />
+      <Legend items={series.map((s) => ({ id: s.id, label: s.label, color: s.color, dash: s.dash }))} />
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
@@ -324,10 +356,8 @@ export function ScatterChart({
   const [tip, setTip] = useState<Tip | null>(null);
   const pts = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
   const { x0, x1, y0, y1 } = useMemo(() => {
-    const xs = pts.map((p) => p.x),
-      ys = pts.map((p) => p.y);
-    const [a, b] = padRange(Math.min(...xs), Math.max(...xs));
-    const [c, d] = padRange(Math.min(...ys), Math.max(...ys));
+    const [a, b] = padRange(...extent(pts.map((p) => p.x)));
+    const [c, d] = padRange(...extent(pts.map((p) => p.y)));
     return { x0: a, x1: b, y0: c, y1: d };
   }, [pts]);
   if (!pts.length)
@@ -520,7 +550,7 @@ export function StackedBars({
   const H = rows.length * row + 4;
   return (
     <div className="chart" ref={attach}>
-      <Legend items={keys.map((k) => ({ label: k.label, color: k.color }))} />
+      <Legend items={keys.map((k) => ({ id: k.key, label: k.label, color: k.color }))} />
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("chart.fractions")} onPointerLeave={() => setTip(null)}>
         {rows.map((r, i) => {
           const tot = keys.reduce((s, k) => s + (r.parts[k.key] ?? 0), 0);

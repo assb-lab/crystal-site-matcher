@@ -301,8 +301,11 @@ export function buildScene(
     const verts: Vec3[] = [];
     for (const nbr of ligs) {
       const lt = add(a.t, nbr.t);
-      const la = addAtom(nbr.j, lt, true);
-      verts.push(la.xyz);
+      // a hidden ligand still shapes the polyhedron, but is not drawn as an atom (nor bonded)
+      if (hidden.has(mainEl(nbr.j))) {
+        const p = cr.positions[nbr.j];
+        verts.push(atoms.get(atomKey(nbr.j, lt))?.xyz ?? toCart(L, [p.frac[0] + lt[0], p.frac[1] + lt[1], p.frac[2] + lt[2]]));
+      } else verts.push(addAtom(nbr.j, lt, true).xyz);
     }
     polys.push({ centerKey: a.key, verts, color: a.color, highlight: isSel });
   }

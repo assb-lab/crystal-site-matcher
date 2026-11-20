@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "./Modal";
 import { TOUR_STEPS } from "../lib/onboarding";
 import { useT, type MsgKey } from "../i18n";
@@ -13,15 +13,19 @@ export default function Onboarding({ onClose }: { onClose: () => void }) {
   const step = TOUR_STEPS[i];
   const last = i === TOUR_STEPS.length - 1;
   const go = (d: number) => setI((x) => Math.min(TOUR_STEPS.length - 1, Math.max(0, x + d)));
+  // ← / → page wherever focus is in the modal (e.g. on ✕, or on the body after the back button disappears)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key === "ArrowRight") go(1);
+      else if (e.key === "ArrowLeft") go(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
     <Modal open onClose={onClose} title={t(`tour.${step.id}.title` as MsgKey)} id="onboarding">
-      <div
-        className="tour"
-        onKeyDown={(e) => {
-          if (e.key === "ArrowRight") go(1);
-          else if (e.key === "ArrowLeft") go(-1);
-        }}
-      >
+      <div className="tour">
         <ul className="tour-list">
           {Array.from({ length: step.items }, (_, k) => (
             <li key={`${step.id}-${k}`}>{t(`tour.${step.id}.${k + 1}` as MsgKey)}</li>
@@ -47,7 +51,7 @@ export default function Onboarding({ onClose }: { onClose: () => void }) {
                 {t("tour.back")}
               </button>
             )}
-            <button className="btn btn-primary" onClick={() => (last ? onClose() : go(1))} id="tour-next" autoFocus>
+            <button className="btn btn-primary" onClick={() => (last ? onClose() : go(1))} id="tour-next" data-autofocus>
               {t(last ? "tour.start" : "tour.next")}
             </button>
           </div>

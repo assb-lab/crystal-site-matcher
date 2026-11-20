@@ -145,7 +145,7 @@ export default function SitePanel(p: Props) {
           <ShellButtons neighbors={eligible} cut={cut} onCut={p.onCutoff} />
           <label className="field-inline" htmlFor="cut-input">
             <span>{t("site.max")}</span>
-            <input id="cut-input" type="number" step={0.01} min={0.5} max={p.rmax} value={cut.toFixed(3)} onChange={(e) => +e.target.value > 0 && p.onCutoff(+e.target.value)} className="num" />
+            <CutInput cut={cut} rmax={p.rmax} onCut={p.onCutoff} />
             <span>Å</span>
           </label>
           <div className="seg" role="radiogroup" aria-label={t("site.scope")}>
@@ -355,6 +355,43 @@ function ShellButtons({ neighbors, cut, onCut }: { neighbors: Neighbor[]; cut: n
   );
 }
 
+/**
+ * Number field for the cutoff. It keeps the text being typed ("2.5", "2.") instead of
+ * re-rendering `cut` as "2.500" on every keystroke, and follows `cut` when it changes elsewhere.
+ */
+function CutInput({ cut, rmax, onCut }: { cut: number; rmax: number; onCut: (c: number) => void }) {
+  const [draft, setDraft] = useState(cut.toFixed(3));
+  const sent = useRef(cut);
+  useEffect(() => {
+    // an outside change (drag, shell buttons, another site): show it; our own commit: keep the text as typed
+    if (Math.abs(cut - sent.current) > 1e-9) setDraft(cut.toFixed(3));
+    sent.current = cut;
+  }, [cut]);
+  const commit = (text: string) => {
+    const v = Number(text);
+    if (text.trim() === "" || !Number.isFinite(v) || v <= 0) return;
+    const c = Math.min(rmax, Math.max(0.5, v));
+    sent.current = c;
+    onCut(c);
+  };
+  return (
+    <input
+      id="cut-input"
+      type="number"
+      step={0.01}
+      min={0.5}
+      max={rmax}
+      value={draft}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        commit(e.target.value);
+      }}
+      onBlur={() => setDraft(cut.toFixed(3))}
+      className="num"
+    />
+  );
+}
+
 function DistanceStrip({
   crystal,
   neighbors,
@@ -497,8 +534,11 @@ function DistanceStrip({
   );
 }
 
-function SizeGauge({ rSite, rHost, hostLabel }: { rSite: number | null; rHost: number | null; hostLabel: string }) {
+function SizeGauge({ rSite: rSite0, rHost: rHost0, hostLabel }: { rSite: number | null; rHost: number | null; hostLabel: string }) {
   const t = useT();
+  // a radius ≤ 0 (e.g. r_site of an H⁺ site) has no place on the scale; the value is still listed below
+  const rSite = rSite0 !== null && rSite0 > 0 ? rSite0 : null;
+  const rHost = rHost0 !== null && rHost0 > 0 ? rHost0 : null;
   if (rSite === null && rHost === null) return null;
   const vals = [rSite, rHost].filter((v): v is number => v !== null);
   const lo = Math.max(0, Math.min(...vals) * 0.7),

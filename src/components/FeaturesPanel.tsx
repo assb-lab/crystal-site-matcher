@@ -6,7 +6,7 @@ import { MINIMUM_COLOR, MINIMUM_SITE_COLOR, SADDLE_COLOR, hopColor } from "../li
 import { INTERSTITIAL_E_MAX, minimumClasses } from "../lib/landscape";
 import { bvseSupported } from "../lib/bvse";
 import { shannonRadius } from "../lib/analysis";
-import { fmt, ionLabel, rgbCss } from "../lib/format";
+import { fmt, ionLabel, pct, rgbCss } from "../lib/format";
 import { LineChart, ScatterChart, StackedBars, seriesColor } from "./charts";
 import { useI18n, type TFn } from "../i18n";
 import { featDesc, featLabel, fmtFeature, groupLabel, shapeName } from "../i18n/domain";
@@ -30,6 +30,12 @@ export function autoIsoLevel(entry: FeatureEntry | undefined): number {
   const pick = [E[2], E[1], E[0]].find((x) => Number.isFinite(x) && x < 3);
   return pick !== undefined ? +(pick + 0.15).toFixed(2) : 1;
 }
+
+/** Fixed-point text without a negative zero: −0.001 → "0.00", not "-0.00". */
+const fixed = (x: number, d: number) => {
+  const s = x.toFixed(d);
+  return +s === 0 ? (0).toFixed(d) : s;
+};
 
 export default function FeaturesPanel({ doc, update, entry, error }: Props) {
   const { t, lang } = useI18n();
@@ -71,6 +77,15 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
       back: range(values.map((b) => b.back)),
     };
   };
+  // what stands in for a missing grid result: the failure, progress, no softBV energy, or no mobile ion
+  const gridNote = () =>
+    entry?.gridStatus === "error"
+      ? t("feat.gridError", { error: entry.gridError ?? "" })
+      : entry?.gridStatus === "running" || entry?.gridStatus === "pending"
+        ? t("feat.runningLong")
+        : entry?.gridStatus === "done"
+          ? t("feat.noEnergy")
+          : t("feat.pickMobile");
   const [hopY, setHopY] = useState<"rb" | "barrier">("rb");
   const yBarrier = hopY === "barrier" && !!barriers;
 
@@ -133,7 +148,7 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
       ) : (
         <>
           <div className="kpis">
-            <Kpi label={t("feat.kpi.e1")} value={fmtFeature(t, FEATURE_BY_KEY.E_1D, v.E_1D)} unit="eV" sub={grid ? "" : entry.gridStatus === "none" ? t("feat.noMobile") : t("feat.running")} />
+            <Kpi label={t("feat.kpi.e1")} value={fmtFeature(t, FEATURE_BY_KEY.E_1D, v.E_1D)} unit="eV" sub={grid ? "" : entry.gridStatus === "none" ? t("feat.noMobile") : entry.gridStatus === "error" ? t("feat.gridFailed") : t("feat.running")} />
             <Kpi label={t("feat.kpi.e3")} value={fmtFeature(t, FEATURE_BY_KEY.E_3D, v.E_3D)} unit="eV" sub={grid && !Number.isFinite(grid.E[2]) ? t("feat.no3D") : ""} />
             <Kpi label={t("feat.kpi.rho")} value={fmtFeature(t, FEATURE_BY_KEY.rho_mobile, v.rho_mobile)} unit="nm⁻³" sub={doc.mobile ? `${featLabel(t, "vacancy")} ${fmtFeature(t, FEATURE_BY_KEY.vacancy, v.vacancy)}` : ""} />
             <Kpi label="GII" value={fmtFeature(t, FEATURE_BY_KEY.GII, v.GII)} unit="v.u." sub={typeof v.GII === "number" ? t(v.GII < 0.1 ? "feat.gii.ok" : v.GII < 0.2 ? "feat.gii.some" : "feat.gii.high") : ""} />
@@ -183,7 +198,7 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                 )}
                 {entry.siteE && entry.siteE.length > 0 && (
                   <p className="muted small">
-                    {t("feat.siteE")} {[...new Map(entry.siteE.map((s) => [s.group, s.E])).entries()].map(([g, e]) => `${g} ${Math.abs(e) < 0.005 ? "0.00" : e.toFixed(2)} eV`).join(t("list.sep"))}
+                    {t("feat.siteE")} {[...new Map(entry.siteE.map((s) => [s.group, s.E])).entries()].map(([g, e]) => `${g} ${fixed(e, 2)} eV`).join(t("list.sep"))}
                   </p>
                 )}
                 {entry.minima && (
@@ -218,7 +233,7 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                                 <span className="dot" style={{ background: rgbCss(c.occupied ? MINIMUM_SITE_COLOR : MINIMUM_COLOR) }} />
                                 {c.occupied ? t("feat.minimaAt", { site: c.nearest?.group ?? "" }) : t("feat.minimaEmpty")}
                               </td>
-                              <td className="num mono">{Math.abs(c.E) < 0.005 ? "0.00" : c.E.toFixed(2)}</td>
+                              <td className="num mono">{fixed(c.E, 2)}</td>
                               <td className="num mono">{c.count}</td>
                               <td className="mono">{c.nearest ? `${c.nearest.group} ${c.nearest.d.toFixed(2)} Å` : "—"}</td>
                               <td className="num mono">{c.curvature.map((x) => x.toFixed(1)).join(" / ")}</td>
@@ -233,7 +248,7 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                 )}
               </>
             ) : (
-              <p className="muted small">{entry.gridStatus === "running" || entry.gridStatus === "pending" ? t("feat.runningLong") : t("feat.pickMobile")}</p>
+              <p className={`small ${entry.gridStatus === "error" ? "note warn-note" : "muted"}`}>{gridNote()}</p>
             )}
           </section>
 
@@ -261,7 +276,7 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                 {t("feat.axes")} {axisLine(grid.Raxis, (r) => !Number.isNaN(r), " Å")}
               </p>
             ) : (
-              <p className="muted small">{doc.mobile ? t("feat.runningLong") : t("feat.pickMobile")}</p>
+              <p className={`small ${entry.gridStatus === "error" ? "note warn-note" : "muted"}`}>{gridNote()}</p>
             )}
             {st && st.hops.length > 0 && (
               <>
@@ -417,12 +432,12 @@ export default function FeaturesPanel({ doc, update, entry, error }: Props) {
                           <td className="num mono">{s.cn}</td>
                           <td className="num mono">{fmt(s.cn ? s.dMean : null, 3)}</td>
                           <td className="num mono">{fmt(s.bvs, 2)}</td>
-                          <td className={`num mono ${s.bvsDev !== null && Math.abs(s.bvsDev) > 0.15 ? "warn-note" : ""}`}>{s.bvsDev !== null ? `${s.bvsDev > 0 ? "+" : ""}${(s.bvsDev * 100).toFixed(0)}%` : "—"}</td>
+                          <td className={`num mono ${s.bvsDev !== null && Math.abs(s.bvsDev) > 0.15 ? "warn-note" : ""}`}>{pct(s.bvsDev, 0)}</td>
                           <td className="num mono">{s.distortion.toFixed(3)}</td>
                           <td>
                             {shapeName(lang, s.shape, s.shape)} <span className="muted small">{s.cshm !== null ? s.cshm.toFixed(1) : ""}</span>
                           </td>
-                          {entry.siteE && <td className="num mono">{e ? `${e.E.toFixed(2)}` : ""}</td>}
+                          {entry.siteE && <td className="num mono">{e ? fixed(e.E, 2) : ""}</td>}
                         </tr>
                       );
                     })}

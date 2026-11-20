@@ -1,6 +1,6 @@
 // Background computation of structure features for open documents.
 // Static descriptors are computed synchronously (fast); the BVSE / void grid runs in chunks.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Doc, featureSig } from "./doc";
 import { FeatureValue, StaticFeatures } from "./features";
 import { GridResult } from "./bvse";
@@ -33,7 +33,8 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
   entriesRef.current = entries;
   const busy = useRef(false);
   const failed = useRef(new Set<string>());
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  // static-stage errors with the settings they belong to: a later successful run (or other settings) hides them
+  const [failures, setFailures] = useState<Record<string, { sig: string; message: string }>>({});
   const [kick, setKick] = useState(0);
 
   // drop entries of closed documents
@@ -63,6 +64,11 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
         if (stale()) return;
         if (needStatic === job) {
           const st = staticStage(job, job.hopCutoff);
+          setFailures((x) => {
+            if (!(job.id in x)) return x;
+            const { [job.id]: _, ...rest } = x;
+            return rest;
+          });
           setEntries((e) => ({
             ...e,
             [job.id]: { sig, static: st, grid: null, gridStatus: hasMobile(job) ? "pending" : "none", progress: 0, siteE: null, minima: null, barriers: null, values: { ...st.values } },
@@ -84,7 +90,11 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
           stale,
           entriesRef.current[job.id]?.static.hops ?? [],
         );
-        if (!res || stale()) return;
+        if (!res || stale()) {
+          // cancelled: if the settings came back to this run's, compute again instead of staying "running"
+          setEntries((e) => (e[job.id] && e[job.id].sig === sig && e[job.id].gridStatus === "running" ? { ...e, [job.id]: { ...e[job.id], gridStatus: "pending", progress: 0 } } : e));
+          return;
+        }
         const { grid, siteE, minima, barriers, values: vals } = res;
         setEntries((e) =>
           e[job.id] && e[job.id].sig === sig
@@ -92,11 +102,11 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
             : e,
         );
       } catch (err) {
+        const message = (err as Error).message;
         if (needStatic === job) {
           failed.current.add(sig);
-          setErrors((x) => ({ ...x, [job.id]: (err as Error).message }));
-        }
-        setEntries((e) => (e[job.id] ? { ...e, [job.id]: { ...e[job.id], gridStatus: "error", gridError: (err as Error).message } } : e));
+          setFailures((x) => ({ ...x, [job.id]: { sig, message } }));
+        } else setEntries((e) => (e[job.id] && e[job.id].sig === sig ? { ...e, [job.id]: { ...e[job.id], gridStatus: "error", gridError: message } } : e));
       } finally {
         busy.current = false;
         setKick((k) => k + 1);
@@ -104,5 +114,13 @@ export function useFeatures(docs: Doc[], wantedIds: string[]) {
     })();
   }, [docs, wantedIds, entries, kick]);
 
+  const errors = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const d of docs) {
+      const f = failures[d.id];
+      if (f && f.sig === featureSig(d)) out[d.id] = f.message;
+    }
+    return out;
+  }, [docs, failures]);
   return { entries, errors };
 }

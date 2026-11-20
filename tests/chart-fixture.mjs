@@ -30,6 +30,28 @@ try {
       assert.ok(a < lo && b > hi && b - a >= 0.1);
     }
     assert.deepEqual(padRange(0, 10), [-1.2, 11.2]);
+  } else if (process.argv[2] === 'many') {
+    // 40 XRD patterns of 4251 points each overflowed Math.max(...points) and blanked the app (#81)
+    const { LineChart, extent } = await server.ssrLoadModule('/src/components/charts.tsx');
+    const { I18nProvider } = await server.ssrLoadModule('/src/i18n/index.tsx');
+    const series = Array.from({ length: 40 }, (_, k) => ({
+      id: `doc${k}`, label: 'same name', color: 'red',
+      points: Array.from({ length: 4251 }, (_, i) => ({ x: 5 + i * 0.02, y: (k + 1) * Math.abs(Math.sin(i / 50)) })),
+    }));
+    const errors = [];
+    const origError = console.error;
+    console.error = (...a) => errors.push(a.join(' '));
+    let html;
+    try {
+      html = renderToStaticMarkup(createElement(I18nProvider, { initial: 'en' }, createElement(LineChart, { series, xLabel: '2θ', yLabel: 'I' })));
+    } finally {
+      console.error = origError;
+    }
+    assert.equal((html.match(/<path /g) ?? []).length, 40);
+    assert.doesNotMatch(html, /NaN|Infinity/);
+    assert.ok(!errors.some((e) => /same key/.test(e)), 'legend keys stay unique when labels repeat');
+    assert.deepEqual(extent(Array.from({ length: 200000 }, (_, i) => i - 7)), [-7, 199992]);
+    assert.deepEqual(extent([]), [Infinity, -Infinity]);
   } else {
     const { docFromText, deriveBonds } = await server.ssrLoadModule('/src/lib/doc.ts');
     const { computeStaticFeatures } = await server.ssrLoadModule('/src/lib/features.ts');
@@ -74,6 +96,29 @@ try {
     // a stale selection (e.g. after changing the hop cutoff) is ignored
     const stale = renderToStaticMarkup(createElement(I18nProvider, { initial: 'ja' }, createElement(FeaturesPanel, { ...props, doc: { ...doc, hopSel: 'Li9|Li9|1.000|0.000' } })));
     assert.doesNotMatch(stale, /is-selected|pt-selected/);
+    // values that round to zero print without a sign (#81): E_site −0.001 eV, BVS deviation −0.2 %
+    const nearZero = {
+      ...props.entry,
+      static: { ...st, sites: st.sites.map((x) => ({ ...x, bvsDev: -0.002 })) },
+      siteE: st.sites.map((x, k) => ({ pos: k, group: x.group, E: -0.001 })),
+    };
+    const zero = renderToStaticMarkup(createElement(I18nProvider, { initial: 'en' }, createElement(FeaturesPanel, { ...props, entry: nearZero })));
+    assert.match(zero, />0\.00</);
+    assert.match(zero, />0%</);
+    assert.doesNotMatch(zero, /[-−]0\.00|[-−]0%/);
+    // a failed grid shows its error instead of "computing" / "choose a mobile ion" (#81)
+    for (const [lang, re] of [['ja', /計算できませんでした: grid exploded/], ['en', /Could not compute the BVSE \/ void grid: grid exploded/]]) {
+      const failed = renderToStaticMarkup(createElement(I18nProvider, { initial: lang }, createElement(FeaturesPanel, { ...props, entry: { ...props.entry, gridStatus: 'error', gridError: 'grid exploded' } })));
+      assert.match(failed, re);
+      assert.doesNotMatch(failed, lang === 'en' ? /Choose a mobile ion|Computing…/ : /可動イオンを選ぶと|計算中です/);
+    }
+    const { pct } = await server.ssrLoadModule('/src/lib/format.ts');
+    assert.equal(pct(-0.002, 0), '0%');
+    assert.equal(pct(-0.0004), '0.0%');
+    assert.equal(pct(0, 1), '0.0%');
+    assert.equal(pct(0.05, 0), '+5%');
+    assert.equal(pct(-0.05, 0), '−5%');
+    assert.equal(pct(null), '—');
   }
 } finally {
   await server.close();

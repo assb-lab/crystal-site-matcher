@@ -114,6 +114,26 @@ ${rows.map(([label, el, occ]) => `${label} ${el} 0.5 0.5 0.5 ${occ}`).join('\n')
     // vertices are the bonded cations: NLi₈ in Li₃N, OLi₃Co₃ in LiCoO₂, OPFeLi₂ in LiFePO₄ …
     assert.ok(anions.polys.some((p) => p.verts.length === cn), `${f}: CN ${cn} around ${anion}`);
   }
+  // hidden ligands are not drawn back as polyhedron corners (#81)
+  {
+    const { doc, bonds } = await open('LiCoO2');
+    const elOf = (a) => doc.crystal.sites[doc.crystal.positions[a.pos].main].element;
+    const shown = sc.buildScene(doc.crystal, bonds, doc.view, null);
+    const view = { ...doc.view, hiddenElements: ['O'] };
+    const spec = sc.buildScene(doc.crystal, bonds, view, null);
+    assert.ok(shown.atoms.some((a) => elOf(a) === 'O'));
+    assert.equal(spec.atoms.filter((a) => elOf(a) === 'O').length, 0, 'no O atoms when O is hidden');
+    assert.ok(spec.polys.length > 0 && spec.polys.length === shown.polys.length, 'CoO6 polyhedra are still drawn');
+    assert.deepEqual(spec.polys.map((p) => p.verts), shown.polys.map((p) => p.verts), 'same polyhedron corners');
+    const xyzKey = (v) => v.map((x) => x.toFixed(4)).join();
+    const drawn = new Set(spec.atoms.map((a) => xyzKey(a.xyz)));
+    for (const b of spec.bonds) assert.ok(drawn.has(xyzKey(b.a)) && drawn.has(xyzKey(b.b)), 'bonds only between drawn atoms');
+    // the selected site keeps its polyhedron with hidden ligands too
+    const co = spec.atoms.find((a) => elOf(a) === 'Co');
+    const sel = sc.buildScene(doc.crystal, bonds, view, co.key);
+    assert.equal(sel.atoms.filter((a) => elOf(a) === 'O').length, 0);
+    assert.ok(sel.polys.some((p) => p.highlight && p.verts.length === 6));
+  }
   // the CN ≤ 6 limit of the default applies to cation centres only (N in Li₃N is CN 8)
   {
     const { doc, bonds } = await open('Li3N');
