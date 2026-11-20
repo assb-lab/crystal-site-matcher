@@ -1,6 +1,6 @@
 // Feature pipeline shared by the app (useFeatures) and the command-line tool.
 // Framework-free: no React, no DOM.
-import { BondSettings, defaultBondSettings, deriveBonds } from "./bonding";
+import { BondSettings, defaultBondSettings, deriveBonds, neighborTable } from "./bonding";
 import { CifBlock } from "./cif";
 import { FeatureValue, StaticFeatures, computeStaticFeatures, defaultMobile, ionicRadiusFn, mobileSiteEnergies } from "./features";
 import { FrameworkField, GridResult, computeGrid } from "./bvse";
@@ -87,9 +87,19 @@ export function gridFeatureValues(grid: GridResult, siteE: GridStage["siteE"]): 
   return vals;
 }
 
+/** Infinity / NaN (e.g. bottleneck radii with no framework ion in reach) are reported as missing values. */
+function finiteValues(vals: Record<string, FeatureValue>): Record<string, FeatureValue> {
+  const out: Record<string, FeatureValue> = {};
+  for (const [k, x] of Object.entries(vals)) out[k] = typeof x === "number" && !Number.isFinite(x) ? null : x;
+  return out;
+}
+
 export function staticStage(s: Pick<Structure, "crystal" | "ox" | "bondSettings" | "mobile">, hopCutoff: number): StaticFeatures {
-  const { table, bonds } = deriveBonds(s.crystal, s.ox, s.bondSettings);
-  return computeStaticFeatures(s.crystal, s.ox, bonds, table, { mobileEl: s.mobile, hopCutoff });
+  const { table, bonds, rmax } = deriveBonds(s.crystal, s.ox, s.bondSettings);
+  // hops are read from the neighbour table, which must reach the hop cutoff
+  const hopTable = hopCutoff > rmax ? neighborTable(s.crystal, Math.ceil(hopCutoff)) : table;
+  const st = computeStaticFeatures(s.crystal, s.ox, bonds, table, { mobileEl: s.mobile, hopCutoff, hopTable });
+  return { ...st, values: finiteValues(st.values) };
 }
 
 export const hasMobile = (s: Pick<Structure, "crystal" | "mobile">) => !!s.mobile && s.crystal.sites.some((x) => x.element === s.mobile);
@@ -116,6 +126,6 @@ export async function gridStage(
     siteE,
     minima,
     barriers,
-    values: { ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima, s.mobile), ...hopBarrierFeatureValues(s.crystal, hops, barriers, s.mobile), ...diffusionFeatureValues(s.crystal, hops, barriers, siteE) },
+    values: finiteValues({ ...gridFeatureValues(grid, siteE), ...minimaFeatureValues(s.crystal, minima, s.mobile), ...hopBarrierFeatureValues(s.crystal, hops, barriers, s.mobile), ...diffusionFeatureValues(s.crystal, hops, barriers, siteE) }),
   };
 }

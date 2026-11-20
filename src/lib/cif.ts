@@ -33,7 +33,8 @@ function tokenize(text: string): Tok[] {
         i++;
       }
       toks.push({ v: buf.join("\n").trim(), quoted: true });
-      i++; // skip closing ;
+      // values may follow the closing ";" on the same line: tokenize the rest of it
+      if (i < lines.length) lines[i] = " " + lines[i].slice(1);
       continue;
     }
     let p = 0;
@@ -67,6 +68,11 @@ function isReserved(t: Tok, word: string): boolean {
   return !t.quoted && t.v.toLowerCase().startsWith(word);
 }
 
+/** A token that starts a new tag, loop, block or frame (so it cannot be a value). */
+function isKeyword(t: Tok): boolean {
+  return !t.quoted && (t.v.startsWith("_") || ["loop_", "data_", "save_", "global_"].some((w) => isReserved(t, w)));
+}
+
 export function parseCif(text: string): CifBlock[] {
   const toks = tokenize(text);
   const blocks: CifBlock[] = [];
@@ -98,8 +104,7 @@ export function parseCif(text: string): CifBlock[] {
       const vals: string[] = [];
       while (i < toks.length) {
         const u = toks[i];
-        if (!u.quoted && (u.v.startsWith("_") || isReserved(u, "loop_") || isReserved(u, "data_") || isReserved(u, "save_") || isReserved(u, "global_")))
-          break;
+        if (isKeyword(u)) break;
         vals.push(u.v);
         i++;
       }
@@ -114,7 +119,7 @@ export function parseCif(text: string): CifBlock[] {
       const blk = ensure();
       const tag = normTag(t.v);
       const val = toks[i + 1];
-      if (val && !(!val.quoted && val.v.startsWith("_"))) {
+      if (val && !isKeyword(val)) {
         blk.items.set(tag, val.v);
         i += 2;
       } else {

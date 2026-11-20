@@ -60,6 +60,7 @@ export function parseSymOp(text: string): SymOp {
       }
     }
   });
+  if (![...R.flat(), ...t].every(Number.isFinite)) throw new MsgError("err.symop", { text });
   return { R, t, text };
 }
 
@@ -68,8 +69,12 @@ function normHM(s: string): string {
     .toLowerCase()
     .replace(/[\s_]/g, "")
     .replace(/:.*/, "")
-    .replace(/origin.*/, "");
+    .replace(/\(?origin.*/, "")
+    .replace(/[()]/g, "");
 }
+
+// pre-2016 ITA symbols with an "e" glide that the table only lists under one name
+const HM_ALIAS: Record<string, string> = { cmca: "cmce", abm2: "aem2", aba2: "aea2", cmme: "cmma" };
 
 function normHall(s: string): string {
   return s.toLowerCase().replace(/\s+/g, " ").replace(/["']/g, '"').trim();
@@ -86,9 +91,17 @@ function toMatch(e: SgEntry): SpaceGroupMatch {
   return { number: e.n, symbol: e.hm, setting: e.u, ops: e.o.map((i) => parseSymOp(SG.ops[i])) };
 }
 
-/** Prefer origin choice 2 and hexagonal axes, which is what ICSD / COD / VESTA write by default. */
-function pickPreferred(cands: SgEntry[], hmRaw?: string): SgEntry | undefined {
+/**
+ * Prefer origin choice 2 and hexagonal axes, which is what ICSD / COD / VESTA write by default.
+ * For rhombohedral groups the cell shape (`axes`) decides between the :H and :R settings, since operators for the wrong axes
+ * would generate the wrong structure.
+ */
+function pickPreferred(cands: SgEntry[], hmRaw?: string, axes?: "H" | "R"): SgEntry | undefined {
   if (cands.length === 0) return undefined;
+  if (axes) {
+    const byAxes = cands.find((c) => c.u.endsWith(`:${axes}`));
+    if (byAxes) return byAxes;
+  }
   if (hmRaw) {
     const want = hmRaw.toLowerCase();
     if (/:\s*1|origin\s*(choice)?\s*1/.test(want)) return cands.find((c) => c.u.endsWith(":1")) ?? cands[0];
@@ -97,7 +110,7 @@ function pickPreferred(cands: SgEntry[], hmRaw?: string): SgEntry | undefined {
   return cands.find((c) => c.u.endsWith(":2")) ?? cands.find((c) => c.u.endsWith(":H")) ?? cands[0];
 }
 
-export function lookupSpaceGroup(opts: { hm?: string; hall?: string; number?: number }): SpaceGroupMatch | undefined {
+export function lookupSpaceGroup(opts: { hm?: string; hall?: string; number?: number; axes?: "H" | "R" }): SpaceGroupMatch | undefined {
   if (opts.hall) {
     const h = normHall(opts.hall);
     const e = SG.groups.find((g) => normHall(g.hall) === h);
@@ -110,13 +123,14 @@ export function lookupSpaceGroup(opts: { hm?: string; hall?: string; number?: nu
     if (suf) {
       hmRaw = hmRaw.slice(0, suf.index) + ({ Z: ":2", S: ":1", H: ":H", R: ":R" } as Record<string, string>)[suf[1].toUpperCase()];
     }
-    const h = normHM(hmRaw);
+    const h0 = normHM(hmRaw);
+    const h = HM_ALIAS[h0] ?? h0;
     const cands = SG.groups.filter((g) => normHM(g.hm) === h || normHM(g.u) === h || normHM(g.s) === h);
-    const e = pickPreferred(cands, hmRaw);
+    const e = pickPreferred(cands, hmRaw, opts.axes);
     if (e) return toMatch(e);
   }
   if (opts.number && opts.number >= 1 && opts.number <= 230) {
-    const e = pickPreferred(SG.groups.filter((g) => g.n === opts.number));
+    const e = pickPreferred(SG.groups.filter((g) => g.n === opts.number), undefined, opts.axes);
     if (e) return toMatch(e);
   }
   return undefined;
