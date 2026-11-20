@@ -746,6 +746,7 @@ export const en: Record<keyof typeof ja, string> = {
   "view.resetTitle": "Back to the default view",
   "view.vacancy": "Vacancy",
   "warn.badCoords": "Could not read the coordinates of site {label}.",
+  "warn.dupLabel": "Site label {label} is used more than once; renamed the later one to {renamed} to tell them apart.",
   "warn.manyAtoms": "The cell has many atoms ({n}); the app may be slow.",
   "warn.noSymmetry": "No symmetry operators or space-group symbol found; expanded as P1.",
   "warn.symop": "Ignored an unparsable symmetry operator: {text}",

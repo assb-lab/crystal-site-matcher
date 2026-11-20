@@ -2,7 +2,7 @@
 // highest point is lowest (minimax path), searched in a tube around the straight line. The highest
 // point is the saddle; barriers are measured from the BVSE at the two CIF sites.
 
-import type { FrameworkField, GridResult } from "./bvse";
+import { type FrameworkField, type GridResult, gridSteps } from "./bvse";
 import { type Hop, hopClasses } from "./features";
 import { PeriodicUnionFind } from "./percolation";
 import { Crystal, Vec3, pbcDist, toCart } from "./structure";
@@ -115,14 +115,7 @@ export function hopBarrier(cr: Crystal, grid: GridResult, field: FrameworkField,
   cost.set(start, e0);
   peak.set(start, start);
   heap.push(e0, start);
-  const steps: Vec3[] = [
-    [1, 0, 0],
-    [-1, 0, 0],
-    [0, 1, 0],
-    [0, -1, 0],
-    [0, 0, 1],
-    [0, 0, -1],
-  ];
+  const steps = gridSteps(L, [n0, n1, n2]);
   while (heap.size) {
     const [c, u] = heap.pop();
     if (done.has(u)) continue;

@@ -285,7 +285,7 @@ export function ionicRadiusFn(cr: Crystal, ox: Record<string, number>, bonds: Bo
     const k = `${site}|${cn}`;
     const c = cache.get(k);
     if (c !== undefined) return c;
-    const r = shannonRadius(s.element, Math.round(ox[s.label] ?? 0), cn, { kind: "ionic" })?.r ?? (ELEMENTS[s.element]?.r ?? 1.2) * 0.6;
+    const r = shannonRadius(s.element, ox[s.label] ?? 0, cn, { kind: "ionic" })?.r ?? (ELEMENTS[s.element]?.r ?? 1.2) * 0.6;
     cache.set(k, r);
     return r;
   };
@@ -371,7 +371,7 @@ export function computeStaticFeatures(
   ox: Record<string, number>,
   bonds: BondTable,
   table: Neighbor[][],
-  opts: { mobileEl: string | null; hopCutoff: number },
+  opts: { mobileEl: string | null; hopCutoff: number; hopTable?: Neighbor[][] },
 ): StaticFeatures {
   const L = cr.lattice;
   const v: Record<string, FeatureValue> = {};
@@ -574,12 +574,14 @@ export function computeStaticFeatures(
   // ---------------- hop network ----------------
   const hops: Hop[] = [];
   if (mobileEl && mobilePos.length) {
-    const field = new FrameworkField(cr, ox, mobileEl, radius, 6);
+    // the field must reach the framework ions around the longest hop
+    const field = new FrameworkField(cr, ox, mobileEl, radius, Math.max(6, opts.hopCutoff));
     const mSet = new Set(mobilePos.map((p) => p.index));
+    const hopTable = opts.hopTable ?? table;
     type Cand = { a: number; b: number; t: Vec3; d: number; A: Vec3; B: Vec3 };
     const cands: Cand[] = [];
     for (const p of mobilePos)
-      for (const n of table[p.index]) {
+      for (const n of hopTable[p.index]) {
         if (n.d > opts.hopCutoff) break;
         if (!mSet.has(n.j)) continue;
         // each undirected hop once

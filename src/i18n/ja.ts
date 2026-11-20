@@ -744,6 +744,7 @@ export const ja = {
   "view.resetTitle": "初期の視点に戻す",
   "view.vacancy": "空孔",
   "warn.badCoords": "サイト {label} の座標が読めません。",
+  "warn.dupLabel": "サイトのラベル {label} が重複しているため、2 つ目以降を {renamed} のように名前を変えて区別しました。",
   "warn.manyAtoms": "単位胞内の原子数が多い ({n}) ため動作が重くなる可能性があります。",
   "warn.noSymmetry": "対称操作も空間群記号も見つからないため P1 として展開しました。",
   "warn.symop": "対称操作を解釈できないため無視しました: {text}",

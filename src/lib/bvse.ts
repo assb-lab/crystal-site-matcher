@@ -9,7 +9,7 @@
 import bvseRaw from "../data/bvse.json";
 import { ELEMENTS } from "./data";
 import { PeriodicUnionFind } from "./percolation";
-import { Crystal, Vec3, toCart } from "./structure";
+import { Crystal, Lattice, Vec3, toCart } from "./structure";
 
 interface BvseData {
   mobile: Record<string, Record<string, [number, number, number]>>;
@@ -71,14 +71,19 @@ export class FrameworkField {
     const ns = L.recip.map((r) => Math.ceil(rcut * r) + 1);
     const base: Omit<FieldIon, "x" | "y" | "z">[] = [];
     const fracs: Vec3[] = [];
-    for (const p of cr.positions)
+    for (const p of cr.positions) {
+      // A position shared with the mobile ion (antisite, Li/Ni mixing, dopant on the Li site) is part of the
+      // mobile sublattice: the field describes it emptied. Keeping its other occupants would put an ion on
+      // every hop end point, which blocks all hops from the site and gives a d → 0 Coulomb term there.
+      if (p.occupants.some((o) => cr.sites[o.site].element === mobileEl)) continue;
       for (const o of p.occupants) {
         const s = cr.sites[o.site];
-        if (s.element === mobileEl) continue;
         const q = ox[s.label] ?? 0;
-        if (q === 0 || qm === 0) continue;
         const r = ionicRadius(p.index, o.site);
-        if (q * qm < 0) {
+        if (q === 0 || qm === 0) {
+          // no charge: no energy term, but the ion still takes up space (voids, hop bottlenecks)
+          base.push({ kind: 0, a: 0, b: 0, c: 0, r, occ: o.occ });
+        } else if (q * qm < 0) {
           const prm = table?.[ionKey(s.element, q)];
           if (!prm) {
             missing.add(ionKey(s.element, q));
@@ -91,6 +96,7 @@ export class FrameworkField {
         }
         fracs.push(p.frac);
       }
+    }
     // periodic images covering the cell plus rcut
     for (let t0 = -ns[0]; t0 <= ns[0]; t0++)
       for (let t1 = -ns[1]; t1 <= ns[1]; t1++)
@@ -255,6 +261,35 @@ export class FrameworkField {
   }
 }
 
+/**
+ * Grid steps that connect a point to its nearest neighbours: the six face steps plus every diagonal step of
+ * {−1,0,1}³ that is no longer than the longest face step. In an orthogonal cell this is just the six face
+ * steps; in oblique / hexagonal cells it adds the short diagonals (e.g. a+b at γ = 120°), so paths need not
+ * staircase and the result does not depend on how the cell is chosen.
+ */
+export function gridSteps(L: Lattice, n: Vec3): Vec3[] {
+  const h = [L.A, L.B, L.C].map((v: Vec3, i) => v.map((x) => x / n[i]) as Vec3);
+  const len = (s: Vec3) => Math.hypot(...[0, 1, 2].map((c) => s[0] * h[0][c] + s[1] * h[1][c] + s[2] * h[2][c]));
+  const hMax = Math.max(len([1, 0, 0]), len([0, 1, 0]), len([0, 0, 1]));
+  // face steps first and in a fixed order: searches break ties by visiting order
+  const out: Vec3[] = [
+    [1, 0, 0],
+    [-1, 0, 0],
+    [0, 1, 0],
+    [0, -1, 0],
+    [0, 0, 1],
+    [0, 0, -1],
+  ];
+  for (let i = -1; i <= 1; i++)
+    for (let j = -1; j <= 1; j++)
+      for (let k = -1; k <= 1; k++) {
+        if (Math.abs(i) + Math.abs(j) + Math.abs(k) < 2) continue;
+        const s: Vec3 = [i, j, k];
+        if (len(s) <= hMax * (1 + 1e-9)) out.push(s);
+      }
+  return out;
+}
+
 /** Energy above E_1D (eV) at which the connected low-energy volume is measured. */
 export const CONN_DE = 0.2;
 
@@ -320,6 +355,7 @@ export async function computeGrid(
     for (let i = 0; i < N; i++) energy[i] -= eMinAbs;
   }
 
+  const steps = gridSteps(L, n);
   const neighbors = (idx: number): [number, Vec3][] => {
     const i = idx % n[0],
       j = Math.floor(idx / n[0]) % n[1],
@@ -332,12 +368,7 @@ export async function computeGrid(
         wk = kk - s[2] * n[2];
       out.push([wi + n[0] * (wj + n[1] * wk), s]);
     };
-    push(i + 1, j, k);
-    push(i - 1, j, k);
-    push(i, j + 1, k);
-    push(i, j - 1, k);
-    push(i, j, k + 1);
-    push(i, j, k - 1);
+    for (const st of steps) push(i + st[0], j + st[1], k + st[2]);
     return out;
   };
 
@@ -412,7 +443,8 @@ export async function computeGrid(
   const voidCurve: { x: number; y: number }[] = [];
   {
     let q = 0;
-    const top = Math.max(0.2, maxVoid);
+    // maxVoid is Infinity when there are no framework ions at all
+    const top = Number.isFinite(maxVoid) ? Math.max(0.2, maxVoid) : 0.2;
     for (let s = 60; s >= 0; s--) {
       const x = (top * s) / 60;
       while (q < N && voids[ordV[q]] >= x) q++;

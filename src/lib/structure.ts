@@ -294,10 +294,24 @@ export function crystalFromCif(block: CifBlock): Crystal {
     }
   } else {
     const xyz = getItem(block, "_space_group_symop_operation_xyz", "_symmetry_equiv_pos_as_xyz");
-    if (xyz) ops.push(parseSymOp(xyz));
+    if (xyz)
+      try {
+        ops.push(parseSymOp(xyz));
+      } catch (e) {
+        warnings.push(e instanceof MsgError ? e.msg : msg("warn.symop", { text: xyz }));
+      }
   }
   if (ops.length <= 1) {
-    const m = lookupSpaceGroup({ hm, hall, number: sgNumber ?? undefined });
+    // rhombohedral groups have :H and :R settings; the cell shape tells which one the coordinates use
+    const near = (x: number, y: number, tol: number) => Math.abs(x - y) <= tol;
+    const sameLen = (x: number, y: number) => near(x, y, 1e-3 * Math.max(x, y));
+    const axes =
+      sameLen(a, b) && sameLen(b, c) && near(alpha, beta, 0.01) && near(beta, gamma, 0.01) && !near(alpha, 90, 0.01)
+        ? "R"
+        : sameLen(a, b) && near(alpha, 90, 0.01) && near(beta, 90, 0.01) && near(gamma, 120, 0.01)
+          ? "H"
+          : undefined;
+    const m = lookupSpaceGroup({ hm, hall, number: sgNumber ?? undefined, axes });
     if (m && m.ops.length > ops.length) {
       ops = m.ops;
       sgSymbol = m.symbol;
@@ -336,12 +350,18 @@ export function crystalFromCif(block: CifBlock): Crystal {
     cOcc = col("_atom_site_occupancy"),
     cFlag = col("_atom_site_calc_flag");
   const sites: AsymSite[] = [];
+  const usedLabels = new Set<string>();
   for (const row of asl.loop.rows) {
     if (cFlag >= 0 && row[cFlag]?.toLowerCase() === "dum") continue;
-    const label = cLabel >= 0 ? row[cLabel] : `X${sites.length + 1}`;
-    const typeSymbol = cType >= 0 && row[cType] !== "?" && row[cType] !== "." ? row[cType] : label;
+    const rawLabel = cLabel >= 0 ? row[cLabel] : `X${sites.length + 1}`;
+    // oxidation states, bond overrides and site groups are keyed by label, so it has to be unique
+    let label = rawLabel;
+    for (let n = 2; usedLabels.has(label); n++) label = `${rawLabel}_${n}`;
+    if (label !== rawLabel) warnings.push(msg("warn.dupLabel", { label: rawLabel, renamed: label }));
+    usedLabels.add(label);
+    const typeSymbol = cType >= 0 && row[cType] !== "?" && row[cType] !== "." ? row[cType] : rawLabel;
     let { element, charge } = parseTypeSymbol(typeSymbol);
-    if (!element) element = parseTypeSymbol(label).element;
+    if (!element) element = parseTypeSymbol(rawLabel).element;
     if (!element) {
       warnings.push(msg("warn.unknownElement", { label }));
       continue;
@@ -434,6 +454,8 @@ function gcd(a: number, b: number): number {
 
 export function formulaString(cr: Crystal): { formula: string; Z: number } {
   const comp = cellComposition(cr);
+  // occupancies written to 3–4 decimals (0.3333, 0.1667) leave counts like 2.0004: snap them to the integer
+  for (const e in comp) if (Math.abs(comp[e] - Math.round(comp[e])) < 1e-3 * Math.max(1, comp[e])) comp[e] = Math.round(comp[e]);
   const els = Object.keys(comp).sort((x, y) => (ELEMENTS[x]?.X ?? 0) - (ELEMENTS[y]?.X ?? 0));
   // Z: largest divisor of the integer-valued counts that keeps every count a multiple of 0.001
   const intCounts = els.map((e) => comp[e]).filter((v) => Math.abs(v - Math.round(v)) < 1e-3 && Math.round(v) > 0).map(Math.round);
@@ -450,7 +472,8 @@ export function formulaString(cr: Crystal): { formula: string; Z: number } {
   const fmt = (v: number) => {
     const r = v / g;
     if (Math.abs(r - 1) < 1e-6) return "";
-    return Math.abs(r - Math.round(r)) < 1e-3 ? String(Math.round(r)) : r.toFixed(2).replace(/0+$/, "");
+    const t = Math.abs(r - Math.round(r)) < 1e-3 ? String(Math.round(r)) : r.toFixed(2).replace(/\.?0+$/, "");
+    return t === "1" ? "" : t;
   };
   return { formula: els.map((e) => e + fmt(comp[e])).join(""), Z };
 }

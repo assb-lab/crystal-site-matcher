@@ -93,7 +93,10 @@ export function relevantPairs(cr: Crystal, ox: Record<string, number>, ionicOnly
 export function bondCutoff(cr: Crystal, ox: Record<string, number>, bs: BondSettings, i: number, j: number): number | null {
   const pi = cr.positions[i],
     pj = cr.positions[j];
-  const ov = bs.siteOverride[pi.group] ?? bs.siteOverride[pj.group];
+  // symmetric in i and j, so both ends agree on the bond: with an override on each side the larger one wins
+  const oa = bs.siteOverride[pi.group],
+    ob = bs.siteOverride[pj.group];
+  const ov = oa !== undefined && ob !== undefined ? Math.max(oa, ob) : (oa ?? ob);
   let best: number | null = null;
   for (const oi of pi.occupants)
     for (const oj of pj.occupants) {
@@ -150,8 +153,8 @@ export function rmaxFor(bs: BondSettings) {
   return Math.max(6, Math.ceil(Math.max(...vals, 0) + 1.5));
 }
 
-export function deriveBonds(crystal: Crystal, ox: Record<string, number>, bs: BondSettings): { table: Neighbor[][]; bonds: BondTable; rmax: number } {
-  const rmax = rmaxFor(bs);
+/** Neighbour table up to `rmax` Å, memoised per crystal. */
+export function neighborTable(crystal: Crystal, rmax: number): Neighbor[][] {
   let byR = tableCache.get(crystal);
   if (!byR) {
     byR = new Map();
@@ -162,6 +165,12 @@ export function deriveBonds(crystal: Crystal, ox: Record<string, number>, bs: Bo
     table = buildNeighborTable(crystal, rmax);
     byR.set(rmax, table);
   }
+  return table;
+}
+
+export function deriveBonds(crystal: Crystal, ox: Record<string, number>, bs: BondSettings): { table: Neighbor[][]; bonds: BondTable; rmax: number } {
+  const rmax = rmaxFor(bs);
+  const table = neighborTable(crystal, rmax);
   let a = bondCache.get(table);
   if (!a) {
     a = new WeakMap();

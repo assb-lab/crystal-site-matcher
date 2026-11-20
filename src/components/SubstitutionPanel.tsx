@@ -449,7 +449,7 @@ function DetailCard({ a, r, onClose }: { a: SiteAnalysis; r: CandidateResult; on
         <div>
           <dt>{t("subst.d.dSite")} Δr</dt>
           <dd className="mono">
-            {pct(r.dSite)} <span className="muted">(S {r.sSize.toFixed(2)})</span>
+            {pct(r.dSite)} {r.sSize !== null && <span className="muted">(S {r.sSize.toFixed(2)})</span>}
           </dd>
         </div>
         <div>
@@ -476,10 +476,12 @@ function DetailCard({ a, r, onClose }: { a: SiteAnalysis; r: CandidateResult; on
           </dd>
         </div>
         <div>
-          <dt>{t("subst.d.rho")} r<sub>M</sub>/r<sub>X</sub> (Pauling)</dt>
+          <dt>
+            {t("subst.d.rho")} {a.host.ox < 0 ? <>r<sub>X</sub>/r<sub>M</sub></> : <>r<sub>M</sub>/r<sub>X</sub></>} (Pauling)
+          </dt>
           <dd className="mono">
             {fmt(r.rho, 3)}
-            {pr && (
+            {pr && r.rhoOk !== null && (
               <span className={r.rhoOk ? "ok-note" : "warn-note"}>
                 {" "}
                 {t(r.rhoOk ? "subst.d.rhoIn" : "subst.d.rhoOut", { cn: a.cn, lo: pr[0].toFixed(3), hi: Number.isFinite(pr[1]) ? pr[1].toFixed(3) : "∞" })}

@@ -31,7 +31,16 @@ export function shannonRadius(
   cn: number,
   opts: { kind: RadiusKind; spin?: "" | "HS" | "LS"; square?: boolean },
 ): RadiusResult | null {
-  if (!Number.isInteger(ox) || cn <= 0) return null;
+  if (!Number.isFinite(ox) || cn <= 0) return null;
+  if (!Number.isInteger(ox)) {
+    // mixed valence (Mn3.5+, Fe2.67+): interpolate between the neighbouring integer states, or take the one that exists
+    const f = Math.floor(ox),
+      w = ox - f;
+    const lo = shannonRadius(el, f, cn, opts),
+      hi = shannonRadius(el, f + 1, cn, opts);
+    if (lo && hi) return { ...lo, r: lo.r * (1 - w) + hi.r * w, exact: lo.exact && hi.exact };
+    return lo ?? hi;
+  }
   const all = SHANNON.filter((s) => s.el === el && s.ox === ox);
   if (all.length === 0) return null;
   const val = (e: ShannonEntry) => (opts.kind === "ionic" ? e.ionic : e.crystal);
@@ -318,9 +327,9 @@ export interface CandidateResult extends Candidate {
   bvs: number | null;
   bvsRatio: number | null; // BVS / |ox|
   dq: number;
-  rho: number | null; // radius ratio r_M / r_X
+  rho: number | null; // Pauling radius ratio r(cation) / r(anion)
   rhoOk: boolean | null;
-  sSize: number;
+  sSize: number | null; // null when neither r_site nor r_host is usable
   sBVS: number | null;
   sCharge: number;
   score: number;
@@ -343,9 +352,10 @@ export function paulingRange(cn: number): [number, number] | null {
   return PAULING[cn] ?? null;
 }
 
+/** 1 at |Δq| = 0, 0.75 at 1, 0.5 at 2, 0.3 from 3 on; linear in between (for mixed-valence hosts). */
 export function chargePenalty(dq: number): number {
   const a = Math.abs(dq);
-  return a === 0 ? 1 : a === 1 ? 0.75 : a === 2 ? 0.5 : 0.3;
+  return a <= 2 ? 1 - 0.25 * a : a < 3 ? 0.5 - 0.2 * (a - 2) : 0.3;
 }
 
 export function evaluateCandidate(site: SiteAnalysis, c: Candidate, opts: ScoreOpts): CandidateResult | null {
@@ -353,23 +363,31 @@ export function evaluateCandidate(site: SiteAnalysis, c: Candidate, opts: ScoreO
   const radius = shannonRadius(c.el, c.ox, site.cn, { kind: site.kind, spin: c.spin, square });
   if (!radius) return null;
   const rM = radius.r;
-  const dSite = site.rSite && site.rSite > 0 ? (rM - site.rSite) / site.rSite : null;
-  const dHost = site.rHost ? (rM - site.rHost.r) / site.rHost.r : null;
+  // Shannon radii can be ≤ 0 (H⁺, C⁴⁺ CN III, extrapolated low CN): such a reference has no meaningful relative mismatch
+  const dSite = site.rSite !== null && site.rSite > 0 ? (rM - site.rSite) / site.rSite : null;
+  const dHost = site.rHost && site.rHost.r > 0 ? (rM - site.rHost.r) / site.rHost.r : null;
   const dPred = site.rLigandMean !== null ? rM + site.rLigandMean : null;
   const bvs = bondValenceSum(c.el, site.ligands);
   const bvsRatio = bvs !== null && c.ox !== 0 ? bvs / Math.abs(c.ox) : null;
   const dq = c.ox - site.host.ox;
-  const rho = site.rLigandMean ? rM / site.rLigandMean : null;
+  // Pauling's radius ratio is r(cation) / r(anion): on an anion site the ligands are the cations
+  const rLig = site.rLigandMean;
+  const rho = rLig !== null && rLig > 0 && rM > 0 ? (site.host.ox < 0 ? rLig / rM : rM / rLig) : null;
   const pr = paulingRange(site.cn);
   const rhoOk = rho !== null && pr ? rho >= pr[0] && rho <= pr[1] : null;
 
-  const mismatch = dSite ?? dHost ?? 0;
-  const sSize = Math.exp(-0.5 * (mismatch / opts.sizeTol) ** 2);
+  const mismatch = dSite ?? dHost;
+  // no usable size reference: leave the size term out instead of scoring it as a perfect fit
+  const sSize = mismatch !== null ? Math.exp(-0.5 * (mismatch / opts.sizeTol) ** 2) : null;
   const sBVS = bvsRatio !== null ? Math.exp(-0.5 * ((bvsRatio - 1) / 0.25) ** 2) : null;
   const sCharge = chargePenalty(dq);
   // weighted geometric mean
-  let wSum = 0.6,
-    logS = 0.6 * Math.log(Math.max(sSize, 1e-6));
+  let wSum = 0,
+    logS = 0;
+  if (sSize !== null) {
+    wSum += 0.6;
+    logS += 0.6 * Math.log(Math.max(sSize, 1e-6));
+  }
   if (opts.useBVS && sBVS !== null) {
     wSum += 0.25;
     logS += 0.25 * Math.log(Math.max(sBVS, 1e-6));
@@ -378,7 +396,7 @@ export function evaluateCandidate(site: SiteAnalysis, c: Candidate, opts: ScoreO
     wSum += 0.15;
     logS += 0.15 * Math.log(sCharge);
   }
-  const score = 100 * Math.exp(logS / wSum);
+  const score = wSum > 0 ? 100 * Math.exp(logS / wSum) : 0;
   const verdict: Verdict = score >= 75 ? "good" : score >= 50 ? "possible" : score >= 25 ? "hard" : "unlikely";
   return { ...c, key: candKey(c), radius, dSite, dHost, dPred, bvs, bvsRatio, dq, rho, rhoOk, sSize, sBVS, sCharge, score, verdict };
 }
